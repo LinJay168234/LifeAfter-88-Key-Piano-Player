@@ -1,0 +1,41 @@
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('AndroidBridge', {
+  onThemeChanged: (c) => ipcRenderer.invoke('onThemeChanged', c),
+  getThemeColor: () => ipcRenderer.invoke('getThemeColor'),
+  onOverlayToggle: (v) => ipcRenderer.invoke('onOverlayToggle', v),
+  onSetFolder: () => ipcRenderer.invoke('onSetFolder'),
+  onImport: () => ipcRenderer.invoke('onImport'),
+  onPlayPause: () => ipcRenderer.invoke('onPlayPause'),
+  onReset: () => ipcRenderer.invoke('onReset'),
+  onMinimize: () => ipcRenderer.invoke('onMinimize'),
+  onTogglePopup: () => ipcRenderer.invoke('onTogglePopup'),
+  onClose: () => ipcRenderer.invoke('onClose'),
+  onSpeedChange: (d) => ipcRenderer.invoke('onSpeedChange', d),
+  onSetSpeed: (s) => ipcRenderer.invoke('onSetSpeed', s),
+  getSpeed: () => ipcRenderer.invoke('getSpeed'),
+  onSeek: (r) => ipcRenderer.invoke('onSeek', r),
+  onSelectItem: (id) => ipcRenderer.invoke('onSelectItem', id),
+  onDeleteItem: (id) => ipcRenderer.invoke('onDeleteItem', id),
+  onDeletePopupItem: (id) => ipcRenderer.invoke('onDeletePopupItem', id),
+  onPopupImport: () => ipcRenderer.invoke('onPopupImport'),
+  onPopupClose: () => ipcRenderer.invoke('onPopupClose'),
+  onSaveImage: (src) => ipcRenderer.invoke('onSaveImage', src),
+  onDetectWindow: () => ipcRenderer.invoke('onDetectWindow'),
+  toggleTrackMute: (index) => ipcRenderer.invoke('toggleTrackMute', index),
+});
+
+contextBridge.exposeInMainWorld('electronAPI', {
+  onThemeChanged: (cb) => ipcRenderer.on('theme-changed', (_, color) => cb(color)),
+  onSetTitle: (cb) => ipcRenderer.on('set-title', (_, title, subtitle) => cb(title, subtitle)),
+  onSetStatus: (cb) => ipcRenderer.on('set-status', (_, text) => cb(text)),
+  onSetFloatMode: (cb) => ipcRenderer.on('set-float-mode', (_, mode) => cb(mode)),
+  onOverlayStateChanged: (cb) => ipcRenderer.on('overlay-state-changed', (_, checked) => cb(checked)),
+  onDetectCountdownStart: (cb) => ipcRenderer.on('detect-countdown-start', (_, seconds) => cb(seconds)),
+  onDetectResult: (cb) => ipcRenderer.on('detect-result', (_, data) => cb(data)),
+  onUpdateTracks: (cb) => ipcRenderer.on('update-tracks', (_, tracks) => cb(tracks)),
+  onProgressUpdate: (cb) => ipcRenderer.on('progress-update', (_, data) => cb(data)),
+  onPlayStateChanged: (cb) => ipcRenderer.on('play-state-changed', (_, playing) => cb(playing)),
+  onSpeedChanged: (cb) => ipcRenderer.on('speed-changed', (_, speed) => cb(speed)),
+  sendSaveImage: (src) => ipcRenderer.invoke('onSaveImage', src),
+});
