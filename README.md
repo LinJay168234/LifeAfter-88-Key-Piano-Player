@@ -15,6 +15,7 @@ MIDI钢琴播放器
 5.主题色自定义
 
 开发运行
+
 bash
 
 npm install
@@ -22,6 +23,7 @@ npm install
 npm start
 
 打包
+
 bash
 
 pip install pyinstaller
