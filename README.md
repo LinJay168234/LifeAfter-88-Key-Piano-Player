@@ -22,8 +22,6 @@ npm start
 
 **1. 打包 Python 控制器**
 
-普通电脑用户上没有安装 Python，需要先将 `midi_controller.py` 打包为独立的可执行文件：
-
 ```bash
 pip install pyinstaller
 pyinstaller --onefile --name midi_controller --console midi_controller.py
