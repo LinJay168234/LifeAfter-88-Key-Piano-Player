@@ -1,8 +1,8 @@
-MIDI钢琴播放器
+# MIDI钢琴播放器
 
 基于 Electron 和 Python 的《明日之后》88键钢琴自动演奏工具，通过模拟鼠标点击钢琴键实现自动演奏。
 
-功能
+## 功能
 
 - 读取 MIDI 文件，进行自动演奏
 - 窗口检测与锁定
@@ -10,35 +10,33 @@ MIDI钢琴播放器
 - 悬浮窗控制
 - 主题色自定义
 
-开发运行
+## 开发运行
 
 安装依赖并启动：
-···bash
+```bash
 npm install
 npm start
-···
+```
 
-打包指南
+## 打包指南
 
-如果需要将项目打包为独立的 `.exe` 安装程序，请按以下步骤操作：
+**1. 打包 Python 控制器**
 
-1. 打包 Python 控制器
+普通电脑用户上没有安装 Python，需要先将 `midi_controller.py` 打包为独立的可执行文件：
 
-由于用户电脑可能没有安装 Python，需要先将 `midi_controller.py` 打包为独立的可执行文件：
-
-` ` `bash
+```bash
 pip install pyinstaller
 pyinstaller --onefile --name midi_controller --console midi_controller.py
-` ` `
+```
 
-2. 复制生成的 exe 到项目根目录
+**2. 复制生成的 exe 到项目根目录**
 
-3. 打包 Electron 应用
+**3. 打包 Electron 应用**
 
 在项目根目录执行打包命令：
 
-` ` `bash
+```bash
 npm run dist:win
-` ` `
+```
 
 打包完成后，安装包会生成在 `dist` 目录下。
