@@ -24,6 +24,18 @@ if sys.platform == 'win32':
 # Windows API
 user32 = ctypes.windll.user32
 
+# ============================================================
+# 核心修复 1：强制声明高 DPI 感知
+# 防止在 2K/4K 屏幕开启缩放时，GetWindowRect 拿到的尺寸缩水
+# ============================================================
+try:
+    ctypes.windll.shcore.SetProcessDpiAwareness(2)
+except Exception:
+    try:
+        ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
+
 MOUSEEVENTF_MOVE = 0x0001
 MOUSEEVENTF_ABSOLUTE = 0x8000
 MOUSEEVENTF_LEFTDOWN = 0x0002
@@ -107,14 +119,21 @@ def get_active_window():
             user32.GetWindowTextW(hwnd, title_buf, 256)
             title = title_buf.value
             if title:
-                rect = ctypes.wintypes.RECT()
-                user32.GetWindowRect(hwnd, ctypes.byref(rect))
+                # 核心修复 2：使用客户区坐标和大小（排除标题栏的干扰）
+                client_rect = wintypes.RECT()
+                user32.GetClientRect(hwnd, ctypes.byref(client_rect))
+                
+                pt = wintypes.POINT()
+                pt.x = 0
+                pt.y = 0
+                user32.ClientToScreen(hwnd, ctypes.byref(pt))
+                
                 return {
                     'hwnd': hwnd,
                     'title': title,
-                    'rect': (rect.left, rect.top, rect.right, rect.bottom),
-                    'width': rect.right - rect.left,
-                    'height': rect.bottom - rect.top
+                    'rect': (pt.x, pt.y, pt.x + client_rect.right, pt.y + client_rect.bottom),
+                    'width': client_rect.right,
+                    'height': client_rect.bottom
                 }
     except:
         pass
@@ -128,10 +147,14 @@ def scale_coordinates(window_info, base_x, base_y):
     win_top = window_info['rect'][1]
     win_width = window_info['width']
     win_height = window_info['height']
-    scale = win_width / BASE_WIDTH
-    base_bottom = BASE_HEIGHT - base_y
-    scaled_x = base_x * scale
-    scaled_y = win_height - base_bottom * scale
+    
+    # 核心修复 3：纯等比例缩放，X 按宽度缩放，Y 按高度缩放
+    scale_x = win_width / BASE_WIDTH
+    scale_y = win_height / BASE_HEIGHT
+    
+    scaled_x = base_x * scale_x
+    scaled_y = base_y * scale_y
+    
     return int(win_left + scaled_x), int(win_top + scaled_y)
 
 
@@ -152,13 +175,21 @@ def get_window_info(hwnd):
     try:
         if not user32.IsWindow(hwnd):
             return None
-        rect = ctypes.wintypes.RECT()
-        user32.GetWindowRect(hwnd, ctypes.byref(rect))
+        
+        # 核心修复 2：同样使用客户区尺寸
+        client_rect = wintypes.RECT()
+        user32.GetClientRect(hwnd, ctypes.byref(client_rect))
+        
+        pt = wintypes.POINT()
+        pt.x = 0
+        pt.y = 0
+        user32.ClientToScreen(hwnd, ctypes.byref(pt))
+        
         return {
             'hwnd': hwnd,
-            'rect': (rect.left, rect.top, rect.right, rect.bottom),
-            'width': rect.right - rect.left,
-            'height': rect.bottom - rect.top
+            'rect': (pt.x, pt.y, pt.x + client_rect.right, pt.y + client_rect.bottom),
+            'width': client_rect.right,
+            'height': client_rect.bottom
         }
     except:
         return None
@@ -182,18 +213,18 @@ class MidiParser:
         self.ticks_per_beat = 480
         self.tempo_events = []
         self.track_info = []
-
+    
     def parse(self, file_path):
         with open(file_path, 'rb') as f:
             data = f.read()
-
+        
         offset = 0
         data_len = len(data)
-
+        
         if data[offset:offset+4] != b'MThd':
             print('[MidiParser] 无效的 MIDI 文件头', file=sys.stderr)
             return False
-
+        
         offset += 4
         header_len = struct.unpack('>I', data[offset:offset+4])[0]
         offset += 4
@@ -203,15 +234,15 @@ class MidiParser:
         offset += 2
         self.ticks_per_beat = struct.unpack('>H', data[offset:offset+2])[0]
         offset += 2
-
+        
         if self.ticks_per_beat == 0:
             self.ticks_per_beat = 480
-
+        
         print(f'[MidiParser] 格式: {format_type}, 轨道数: {num_tracks}, ticks_per_beat: {self.ticks_per_beat}', file=sys.stderr)
-
+        
         tracks_data = []
         self.track_info = []
-
+        
         for track_idx in range(num_tracks):
             if offset + 4 > data_len:
                 break
@@ -223,32 +254,32 @@ class MidiParser:
             offset += 4
             track_end = offset + track_len
             track_end = min(track_end, data_len)
-
+            
             track_events = []
             track_tick = 0
             running_status = 0
-
+            
             while offset < track_end:
                 try:
                     delta, offset = read_var_length(data, offset)
                 except:
                     break
                 track_tick += delta
-
+                
                 if offset >= data_len:
                     break
-
+                
                 status = data[offset]
-
+                
                 if status & 0x80:
                     event_type = status
                     offset += 1
                 else:
                     event_type = running_status
-
+                
                 running_status = event_type
                 cmd = event_type >> 4
-
+                
                 if cmd == 0x8:
                     if offset + 1 >= track_end:
                         break
@@ -256,7 +287,7 @@ class MidiParser:
                     velocity = data[offset + 1]
                     offset += 2
                     track_events.append(('note_off', track_tick, note, 0))
-
+                    
                 elif cmd == 0x9:
                     if offset + 1 >= track_end:
                         break
@@ -267,7 +298,7 @@ class MidiParser:
                         track_events.append(('note_on', track_tick, note, velocity))
                     else:
                         track_events.append(('note_off', track_tick, note, 0))
-
+                        
                 elif cmd == 0xA:
                     offset += 2
                 elif cmd == 0xB:
@@ -287,34 +318,33 @@ class MidiParser:
                         meta_len, offset = read_var_length(data, offset)
                         meta_data = data[offset:offset+meta_len]
                         offset += meta_len
-
+                        
                         if meta_type == 0x51 and meta_len >= 3:
                             tempo = (meta_data[0] << 16) | (meta_data[1] << 8) | meta_data[2]
                             self.tempo_events.append((track_tick, tempo))
                     else:
                         sysex_len, offset = read_var_length(data, offset)
                         offset += sysex_len
-
+            
             note_count = sum(1 for e in track_events if e[0] == 'note_on')
-
+            
             tracks_data.append((track_idx, track_events))
-
-            # 使用固定名称「音轨 N」，不读取 MIDI 中的轨道名
+            
             self.track_info.append({
                 'index': track_idx,
                 'name': f'音轨 {track_idx + 1}',
                 'noteCount': note_count,
                 'enabled': True
             })
-
+            
             print(f'[MidiParser] 轨道 {track_idx}: {note_count} 个音符, {len(track_events)} 个事件', file=sys.stderr)
-
+        
         if not self.tempo_events:
             self.tempo_events.append((0, 500000))
         self.tempo_events.sort(key=lambda x: x[0])
-
+        
         print(f'[MidiParser] tempo 事件数: {len(self.tempo_events)}', file=sys.stderr)
-
+        
         def tick_to_sec(tick):
             if tick <= 0:
                 return 0.0
@@ -331,29 +361,32 @@ class MidiParser:
             delta_ticks = tick - last_tick
             seconds += delta_ticks * (current_tempo / self.ticks_per_beat / 1000000.0)
             return seconds
-
+        
         all_events = []
         max_time = 0
-
+        
         for track_idx, track_events in tracks_data:
             for evt_type, tick, note, velocity in track_events:
                 time_sec = tick_to_sec(tick)
                 if time_sec > max_time:
                     max_time = time_sec
-
+                
                 if evt_type == 'note_on':
                     all_events.append((time_sec, note, velocity, True, track_idx))
                 elif evt_type == 'note_off':
                     all_events.append((time_sec, note, 0, False, track_idx))
-
+        
         all_events.sort(key=lambda x: x[0])
-
+        
         self.events = all_events
         self.total_duration = max_time
-
+        
         print(f'[MidiParser] 总事件数: {len(self.events)}', file=sys.stderr)
         print(f'[MidiParser] 总时长: {self.total_duration:.2f} 秒', file=sys.stderr)
-
+        if self.events:
+            print(f'[MidiParser] 首事件: {self.events[0][0]:.3f}s, 音符={self.events[0][1]}', file=sys.stderr)
+            print(f'[MidiParser] 末事件: {self.events[-1][0]:.3f}s, 音符={self.events[-1][1]}', file=sys.stderr)
+        
         return True
 
 
@@ -376,47 +409,46 @@ class MidiController:
         self.speed_request = None
         self.loaded_file = ""
         
-        # 播放代次：每次启动新线程 +1，旧线程检测到代次不匹配立即退出
         self._thread_lock = threading.Lock()
         self._play_generation = 0
-
+        
         state = load_state()
         if state:
             self.target_hwnd = state['hwnd']
             self.target_title = state['title']
-
+    
     def load_midi(self, file_path):
         if not os.path.exists(file_path):
             print(f'[MidiController] 文件不存在: {file_path}', file=sys.stderr)
             return False
-
+        
         if self.is_playing:
             self.stop()
             time.sleep(0.1)
-
+        
         print(f'[MidiController] 加载 MIDI: {file_path}', file=sys.stderr)
-
+        
         parser = MidiParser()
         if not parser.parse(file_path):
             return False
-
+        
         self.events = parser.events
         self.total_duration = parser.total_duration
         self.track_info = parser.track_info
         self.muted_tracks = set()
         self.current_time = 0.0
         self.loaded_file = file_path
-
+        
         self.is_playing = False
         self.is_paused = False
         self.stop_flag = False
         self.pause_flag = False
         self.seek_request = None
         self.speed_request = None
-
+        
         print(f'[MidiController] 加载完成: {len(self.events)} 个事件, {self.total_duration:.2f} 秒', file=sys.stderr)
         return True
-
+    
     def get_tracks(self):
         result = []
         for t in self.track_info:
@@ -427,7 +459,7 @@ class MidiController:
                 'enabled': t['index'] not in self.muted_tracks
             })
         return result
-
+    
     def toggle_track_mute(self, index):
         if index in self.muted_tracks:
             self.muted_tracks.discard(index)
@@ -436,7 +468,7 @@ class MidiController:
             self.muted_tracks.add(index)
             muted = True
         return muted
-
+    
     def detect_window(self):
         print('[MidiController] 立即检测窗口...', file=sys.stderr)
         info = get_active_window()
@@ -447,7 +479,7 @@ class MidiController:
             print(f'[MidiController] 已锁定: {info["title"]}', file=sys.stderr)
             return {'success': True, 'title': info['title']}
         return {'success': False, 'error': '未检测到窗口'}
-
+    
     def get_window_info(self):
         if not self.target_hwnd:
             state = load_state()
@@ -456,7 +488,7 @@ class MidiController:
                 self.target_title = state['title']
             else:
                 return {'available': False}
-
+        
         info = get_window_info(self.target_hwnd)
         if info:
             return {
@@ -468,7 +500,7 @@ class MidiController:
                 'hwnd': self.target_hwnd
             }
         return {'available': False}
-
+    
     def click_note(self, note, velocity):
         if not self.target_hwnd:
             return False
@@ -482,11 +514,11 @@ class MidiController:
         x, y = scale_coordinates(info, base_x, base_y)
         click_at(x, y)
         return True
-
+    
     def play(self):
         if self.is_playing and not self.is_paused:
             return
-
+        
         if not self.events:
             print('[MidiController] 没有加载 MIDI 文件或没有音符', file=sys.stderr)
             return
@@ -494,17 +526,21 @@ class MidiController:
         if not self.target_hwnd:
             print('[MidiController] 未锁定窗口，拒绝播放', file=sys.stderr)
             return
-
+        if not user32.IsWindow(self.target_hwnd):
+            print('[MidiController] 目标窗口已失效，拒绝播放', file=sys.stderr)
+            self.target_hwnd = None
+            return
+        
         self.is_playing = True
         self.is_paused = False
         self.stop_flag = False
         self.pause_flag = False
         self.seek_request = None
         self.speed_request = None
-
+        
         if self.current_time >= self.total_duration:
             self.current_time = 0.0
-
+        
         with self._thread_lock:
             self._play_generation += 1
             gen = self._play_generation
@@ -513,35 +549,29 @@ class MidiController:
             )
             self.play_thread.start()
         print('[MidiController] 开始播放', file=sys.stderr)
-
+    
     def pause(self):
         self.is_paused = True
         self.pause_flag = True
-
+    
     def stop(self):
         self.stop_flag = True
         self.is_playing = False
         self.is_paused = False
         self.current_time = 0.0
-
+    
     def set_speed(self, speed):
         self.speed = max(0.05, min(2.0, speed))
         if self.is_playing and not self.is_paused:
             self.speed_request = self.speed
-
+    
     def seek(self, ratio):
         target = ratio * self.total_duration
         self.current_time = target
         if self.is_playing and not self.is_paused:
             self.seek_request = target
-
+    
     def _play_loop(self, generation):
-        """
-        播放循环：
-        - 每次循环开始时消费 seek_request 作为起始位置
-        - 循环中检测到 seek_request 就退出并启动新线程
-        - 通过 generation 确保只有最新的线程在跑
-        """
         if generation != self._play_generation:
             print(f'[MidiController] 线程 gen={generation} 已过期，退出', file=sys.stderr)
             return
@@ -570,7 +600,7 @@ class MidiController:
                     return
 
                 if self.seek_request is not None:
-                    print('[MidiController] 检测到 seek，退出当前循环并启动新线程', file=sys.stderr)
+                    print(f'[MidiController] 检测到 seek，退出当前循环并启动新线程', file=sys.stderr)
                     with self._thread_lock:
                         self._play_generation += 1
                         new_gen = self._play_generation
@@ -591,7 +621,7 @@ class MidiController:
                 if self.speed_request is not None:
                     elapsed = (time.perf_counter() - playback_start_time) * current_speed
                     current_music_pos = playback_start_pos + elapsed
-
+                    
                     current_speed = self.speed_request
                     self.speed_request = None
                     self.speed = current_speed
@@ -721,6 +751,8 @@ def handle_command(controller, data):
         controller.target_title = ""
         clear_state()
         return {'success': True}
+    elif command == 'ping':
+        return {'status': 'ok'}
     elif command == 'exit':
         return {'status': 'bye', 'exit': True}
     else:
