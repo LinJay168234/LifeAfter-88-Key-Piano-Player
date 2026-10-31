@@ -13,15 +13,19 @@ MIDI钢琴播放器
 开发运行
 
 安装依赖并启动：
-` ` `bash
+···bash
 npm install
 npm start
-` ` `
+···
 
 打包指南
 
+如果需要将项目打包为独立的 `.exe` 安装程序，请按以下步骤操作：
+
 1. 打包 Python 控制器
+
 由于用户电脑可能没有安装 Python，需要先将 `midi_controller.py` 打包为独立的可执行文件：
+
 ` ` `bash
 pip install pyinstaller
 pyinstaller --onefile --name midi_controller --console midi_controller.py
@@ -30,6 +34,9 @@ pyinstaller --onefile --name midi_controller --console midi_controller.py
 2. 复制生成的 exe 到项目根目录
 
 3. 打包 Electron 应用
+
+在项目根目录执行打包命令：
+
 ` ` `bash
 npm run dist:win
 ` ` `
