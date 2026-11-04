@@ -1,63 +1,45 @@
 const { app, BrowserWindow, ipcMain, dialog, screen, globalShortcut, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const os = require('os');
 const { spawn, execSync } = require('child_process');
 
 const pianoKeys = require('./pianoKeys');
-
-// ============================================================
-// Python 命令探测
-// ============================================================
-function getPythonCmd() {
-    const candidates = ['python', 'python3', 'py'];
-    for (const cmd of candidates) {
-        try {
-            execSync(`${cmd} --version`, { stdio: 'ignore' });
-            console.log(`[Main] 使用 Python 命令: ${cmd}`);
-            return cmd;
-        } catch (e) {}
-    }
-    console.error('[Main] Python 未安装');
-    return null;
-}
-
-// ============================================================
-// Python MIDI 控制器 - 常驻进程
-// 打包后优先用 midi_controller.exe，开发环境用 python midi_controller.py
-// ============================================================
-let PYTHON_CMD = null;
-let PYTHON_CONTROLLER = null;
-let USE_EXE = false;
-
-if (app.isPackaged) {
-    const exePath = path.join(process.resourcesPath, 'midi_controller.exe');
-    const pyPath = path.join(process.resourcesPath, 'midi_controller.py');
-    if (fs.existsSync(exePath)) {
-        PYTHON_CONTROLLER = exePath;
-        USE_EXE = true;
-        console.log('[Main] 使用打包的 midi_controller.exe:', exePath);
-    } else if (fs.existsSync(pyPath)) {
-        PYTHON_CONTROLLER = pyPath;
-        PYTHON_CMD = getPythonCmd();
-        console.log('[Main] 使用 Python 脚本:', pyPath);
-    } else {
-        console.error('[Main] 找不到 midi_controller.exe 或 midi_controller.py');
-    }
-} else {
-    PYTHON_CONTROLLER = path.join(__dirname, 'midi_controller.py');
-    PYTHON_CMD = getPythonCmd();
-    console.log('[Main] 开发环境 Python 命令:', PYTHON_CMD);
-}
-
-// ============================================================
-// Python 常驻进程管理
-// ============================================================
 
 let pythonProc = null;
 let pythonReady = false;
 let pendingRequests = new Map();
 let requestId = 0;
+let isExeMode = false;
+let pyExec = null;
+let pyScript = null;
+
+function detectPythonEnv() {
+    if (app.isPackaged) {
+        const exePath = path.join(process.resourcesPath, 'midi_controller.exe');
+        const scriptPath = path.join(process.resourcesPath, 'midi_controller.py');
+        if (fs.existsSync(exePath)) {
+            pyScript = exePath;
+            isExeMode = true;
+        } else if (fs.existsSync(scriptPath)) {
+            pyScript = scriptPath;
+            pyExec = findPython();
+        }
+    } else {
+        pyScript = path.join(__dirname, 'midi_controller.py');
+        pyExec = findPython();
+    }
+}
+
+function findPython() {
+    const cmds = ['python', 'python3', 'py'];
+    for (const cmd of cmds) {
+        try {
+            execSync(`${cmd} --version`, { stdio: 'ignore' });
+            return cmd;
+        } catch (e) {}
+    }
+    return null;
+}
 
 function startPythonService() {
     if (pythonProc) {
@@ -65,38 +47,24 @@ function startPythonService() {
         pythonProc = null;
     }
     
-    if (USE_EXE) {
-        if (!PYTHON_CONTROLLER || !fs.existsSync(PYTHON_CONTROLLER)) {
-            console.error('[Main] midi_controller.exe 不存在');
-            return;
-        }
-        console.log('[Main] 启动 midi_controller.exe...');
-        pythonProc = spawn(PYTHON_CONTROLLER, [], {
-            stdio: ['pipe', 'pipe', 'pipe'],
-            windowsHide: true
-        });
-    } else {
-        if (!PYTHON_CMD || !PYTHON_CONTROLLER || !fs.existsSync(PYTHON_CONTROLLER)) {
-            console.error('[Main] Python 不可用');
-            return;
-        }
-        console.log('[Main] 启动 Python 常驻服务...');
-        pythonProc = spawn(PYTHON_CMD, [PYTHON_CONTROLLER], {
-            stdio: ['pipe', 'pipe', 'pipe']
-        });
+    if (!isExeMode && (!pyExec || !pyScript || !fs.existsSync(pyScript))) {
+        console.error('Python env not found');
+        return;
     }
+
+    const args = isExeMode ? [] : [pyScript];
+    const cmd = isExeMode ? pyScript : pyExec;
+    
+    pythonProc = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
     
     let buffer = '';
-    
     pythonProc.stdout.on('data', (chunk) => {
         buffer += chunk.toString('utf8');
         let lines = buffer.split('\n');
         buffer = lines.pop();
-        
         for (const line of lines) {
             const trimmed = line.trim();
             if (!trimmed) continue;
-            
             try {
                 const result = JSON.parse(trimmed);
                 const firstKey = pendingRequests.keys().next().value;
@@ -107,42 +75,34 @@ function startPythonService() {
                     resolve(result);
                 }
             } catch (e) {
-                console.error('[Main] Python 响应解析失败:', trimmed);
+                console.error('Parse error:', trimmed);
             }
         }
     });
     
     pythonProc.stderr.on('data', (chunk) => {
         const msg = chunk.toString().trim();
-        if (msg) console.log('[Python stderr]', msg);
+        if (msg) console.log(`[Python] ${msg}`);
     });
     
     pythonProc.on('close', (code) => {
-        console.log('[Main] Python 服务已退出, code:', code);
         pythonProc = null;
         pythonReady = false;
         for (const [id, { resolve, timeout }] of pendingRequests) {
             clearTimeout(timeout);
-            resolve({ error: 'Python 服务已退出' });
+            resolve({ error: 'Process exited' });
         }
         pendingRequests.clear();
-    });
-    
-    pythonProc.on('error', (err) => {
-        console.error('[Main] Python 进程错误:', err);
     });
     
     pythonReady = true;
 }
 
-function callPython(command, data = {}, timeoutMs = 15000) {
+function callPython(command, data = {}, timeoutMs = 10000) {
     return new Promise((resolve) => {
         if (!pythonProc || !pythonReady) {
             startPythonService();
-            if (!pythonProc) {
-                resolve({ error: 'Python 服务不可用' });
-                return;
-            }
+            if (!pythonProc) return resolve({ error: 'Service unavailable' });
         }
         
         const id = ++requestId;
@@ -152,7 +112,7 @@ function callPython(command, data = {}, timeoutMs = 15000) {
         const timeout = setTimeout(() => {
             if (pendingRequests.has(id)) {
                 pendingRequests.delete(id);
-                resolve({ error: '超时' });
+                resolve({ error: 'Timeout' });
             }
         }, timeoutMs);
         
@@ -163,29 +123,27 @@ function callPython(command, data = {}, timeoutMs = 15000) {
         } catch (e) {
             clearTimeout(timeout);
             pendingRequests.delete(id);
-            resolve({ error: '写入失败: ' + e.message });
+            resolve({ error: e.message });
         }
     });
 }
 
-// ============================================================
 app.setName('MIDI钢琴播放器');
 Menu.setApplicationMenu(null);
-
 app.commandLine.appendSwitch('force-device-scale-factor', '1');
 app.commandLine.appendSwitch('high-dpi-support', '1');
 
 let mainWindow = null;
 let floatWindow = null;
 let popupWindow = null;
-let isFloatWindowVisible = false;
-let globalShortcutRegistered = false;
+let isFloatVisible = false;
+let isShortcutRegistered = false;
 
-const settingsFile = path.join(app.getPath('userData'), 'settings.json');
-function loadSettings() {
-    try { return JSON.parse(fs.readFileSync(settingsFile, 'utf8')); } catch { return { themeColor: '#FF8800', folderPath: '' }; }
-}
-function saveSettings(s) { fs.writeFileSync(settingsFile, JSON.stringify(s, null, 2)); }
+const settingsPath = path.join(app.getPath('userData'), 'settings.json');
+const loadSettings = () => {
+    try { return JSON.parse(fs.readFileSync(settingsPath, 'utf8')); } catch { return { themeColor: '#FF8800', folderPath: '' }; }
+};
+const saveSettings = (s) => fs.writeFileSync(settingsPath, JSON.stringify(s, null, 2));
 
 let player = {
     isPlaying: false,
@@ -199,305 +157,159 @@ let player = {
 
 let detectCountdown = null;
 let progressTracker = null;
-let playbackEndHandled = false;
+let isPlaybackEnded = false;
 let cachedTracks = [];
+let targetWindowInfo = { locked: false, hwnd: null };
 
-let targetWindowInfo = {
-    x: 0,
-    y: 0,
-    width: 1920,
-    height: 1080,
-    title: '',
-    locked: false,
-    hwnd: null,
-};
-
-let midiLoaded = false;
-
-// ============================================================
-// 窗口锁定检查
-// ============================================================
-
-function isWindowLocked() {
-    return !!(targetWindowInfo && targetWindowInfo.locked === true);
-}
-
-// 副标题辅助文本（单行，用全角空格分隔）
 const HINT_PLAY = '空格键 播放，双击重置';
 const HINT_PAUSE = '空格键 暂停，双击重置';
 
-function statusLoaded() {
-    if (player.currentId) {
-        return '已加载　' + HINT_PLAY;
-    }
-    return '请导入 .mid 文件　' + HINT_PLAY;
-}
-
-// ============================================================
-// Python 命令封装
-// ============================================================
+const getLoadedStatus = () => player.currentId ? `已加载　${HINT_PLAY}` : `请导入 .mid 文件　${HINT_PLAY}`;
+const isWindowLocked = () => !!targetWindowInfo.locked;
 
 async function detectWindowPython() {
-    const result = await callPython('detect', {}, 10000);
-    console.log('[Main] 检测结果:', result);
-    return result;
+    return await callPython('detect', {}, 10000);
 }
 
 async function getWindowInfoPython() {
-    const result = await callPython('info', {}, 5000);
-    console.log('[Main] 窗口信息:', result);
-    return result;
+    return await callPython('info', {}, 5000);
 }
 
 async function loadMidiPython(filePath) {
-    if (!fs.existsSync(filePath)) {
-        console.log('[Main] 文件不存在:', filePath);
-        return { success: false, error: '文件不存在' };
-    }
-    
-    console.log('[Main] 加载文件:', filePath);
-    
-    const result = await callPython('load', { filePath: filePath });
+    if (!fs.existsSync(filePath)) return { success: false };
+    const result = await callPython('load', { filePath });
     if (result && result.success) {
-        midiLoaded = true;
-        if (result.totalDuration) {
-            player.totalDuration = result.totalDuration;
-            player.currentTime = 0;
-            console.log('[Main] 总时长:', result.totalDuration, 'ms');
-        }
-        
+        if (result.totalDuration) player.totalDuration = result.totalDuration;
         if (result.tracks) {
             cachedTracks = result.tracks;
-            console.log('[Main] 轨道信息:', result.tracks);
             broadcast('update-tracks', result.tracks);
         }
     }
-    console.log('[Main] 加载MIDI结果:', result);
     return result;
 }
 
 async function playMidiPython() {
     if (!isWindowLocked()) {
-        console.log('[Main] 未锁定窗口，拒绝播放');
         broadcast('play-state-changed', false);
-        return { success: false, error: '未锁定窗口' };
+        return;
     }
-    
     const result = await callPython('play');
-    if (result && result.success === false) {
-        broadcast('play-state-changed', false);
-        return result;
+    if (result && result.success !== false) {
+        player.isPlaying = true;
+        isPlaybackEnded = false;
+        broadcast('play-state-changed', true);
+        broadcast('set-status', `播放中　${HINT_PAUSE}`);
+        if (!progressTracker) startProgressTracking();
     }
-    player.isPlaying = true;
-    playbackEndHandled = false;
-    broadcast('play-state-changed', true);
-    broadcast('set-status', '播放中　' + HINT_PAUSE);
-    if (!progressTracker) {
-        startProgressTracking();
-    }
-    return result;
 }
 
 async function pauseMidiPython() {
-    const result = await callPython('pause');
+    await callPython('pause');
     player.isPlaying = false;
     broadcast('play-state-changed', false);
-    broadcast('set-status', '已暂停　' + HINT_PLAY);
-    return result;
+    broadcast('set-status', `已暂停　${HINT_PLAY}`);
 }
 
 async function stopMidiPython() {
-    const result = await callPython('stop');
+    await callPython('stop');
     player.isPlaying = false;
     player.currentTime = 0;
-    playbackEndHandled = false;
+    isPlaybackEnded = false;
     broadcast('play-state-changed', false);
     broadcast('progress-update', { currentMs: 0, totalMs: player.totalDuration });
-    broadcast('set-status', statusLoaded());
+    broadcast('set-status', getLoadedStatus());
     if (progressTracker) {
         clearInterval(progressTracker);
         progressTracker = null;
     }
-    return result;
 }
 
 async function seekMidiPython(ratio) {
-    return await callPython('seek', { ratio });
+    await callPython('seek', { ratio });
 }
 
 async function setSpeedPython(speed) {
-    const result = await callPython('speed', { speed });
+    await callPython('speed', { speed });
     player.speed = speed;
     broadcast('speed-changed', speed);
-    return result;
 }
 
 async function getStatePython() {
     const result = await callPython('state');
     if (result && result.totalDuration !== undefined) {
         player.currentTime = result.currentTime || 0;
-        if (result.totalDuration > 0) {
-            player.totalDuration = result.totalDuration;
-        }
+        if (result.totalDuration > 0) player.totalDuration = result.totalDuration;
         broadcast('progress-update', { currentMs: player.currentTime, totalMs: player.totalDuration });
     }
     return result;
 }
 
-async function getTracksPython() {
-    const result = await callPython('tracks');
-    return result;
-}
-
 async function toggleTrackPython(index) {
-    const result = await callPython('toggle_track', { index });
-    return result;
+    return await callPython('toggle_track', { index });
 }
-
-async function resetPython() {
-    const result = await callPython('reset');
-    targetWindowInfo.locked = false;
-    cachedTracks = [];
-    return result;
-}
-
-// ============================================================
-// 进度追踪
-// ============================================================
 
 function startProgressTracking() {
-    if (progressTracker) {
-        clearInterval(progressTracker);
-        progressTracker = null;
-    }
-    playbackEndHandled = false;
+    if (progressTracker) clearInterval(progressTracker);
+    isPlaybackEnded = false;
     progressTracker = setInterval(async () => {
         const state = await getStatePython();
-        if (state && state.isPlaying === false && !playbackEndHandled) {
-            if (player.isPlaying) {
-                playbackEndHandled = true;
-                player.isPlaying = false;
-                player.currentTime = 0;
-
-                await callPython('stop');
-
-                broadcast('play-state-changed', false);
-                broadcast('set-status', '已加载　' + HINT_PLAY);
-                broadcast('progress-update', { currentMs: 0, totalMs: player.totalDuration });
-
-                if (progressTracker) {
-                    clearInterval(progressTracker);
-                    progressTracker = null;
-                }
-            }
+        if (state && state.isPlaying === false && !isPlaybackEnded && player.isPlaying) {
+            isPlaybackEnded = true;
+            player.isPlaying = false;
+            player.currentTime = 0;
+            await callPython('stop');
+            broadcast('play-state-changed', false);
+            broadcast('set-status', `已加载　${HINT_PLAY}`);
+            broadcast('progress-update', { currentMs: 0, totalMs: player.totalDuration });
+            clearInterval(progressTracker);
+            progressTracker = null;
         }
     }, 500);
 }
 
-// ============================================================
-// 窗口检测 - 倒计时交给 UI，主进程只负责到点后检测
-// ============================================================
-
 async function startDetectCountdown() {
-    if (detectCountdown) {
-        clearInterval(detectCountdown);
-        detectCountdown = null;
-    }
-    
+    if (detectCountdown) clearInterval(detectCountdown);
     let countdown = 5;
     
     detectCountdown = setInterval(async () => {
         countdown--;
         if (countdown > 0) return;
-        
         clearInterval(detectCountdown);
         detectCountdown = null;
         
-        console.log('[Main] 倒计时结束，开始检测窗口');
-        
-        const detectResult = await detectWindowPython();
-        
-        if (detectResult && detectResult.success) {
-            targetWindowInfo.title = detectResult.title;
+        const result = await detectWindowPython();
+        if (result && result.success) {
             targetWindowInfo.locked = true;
-            targetWindowInfo.hwnd = null;
-            
-            broadcast('set-status', '已暂停　' + HINT_PLAY);
+            broadcast('set-status', `已暂停　${HINT_PLAY}`);
             
             const info = await getWindowInfoPython();
-            
             if (info && info.available) {
-                targetWindowInfo.x = info.rect[0];
-                targetWindowInfo.y = info.rect[1];
-                targetWindowInfo.width = info.width;
-                targetWindowInfo.height = info.height;
-                targetWindowInfo.title = info.title;
-                targetWindowInfo.hwnd = info.hwnd || null;
-                targetWindowInfo.locked = true;
-                
-                broadcast('detect-result', { locked: true, hint: '已锁定: ' + info.title });
-                
-                if (floatWindow && !floatWindow.isDestroyed()) {
-                    floatWindow.webContents.executeJavaScript(`
-                        const b = document.getElementById('btn-detect-window');
-                        if (b) b.classList.add('locked');
-                    `).catch(() => {});
-                }
+                targetWindowInfo.hwnd = info.hwnd;
+                broadcast('detect-result', { locked: true, hint: `已锁定: ${info.title}` });
+                if (floatWindow) floatWindow.webContents.executeJavaScript(`document.getElementById('btn-detect-window')?.classList.add('locked');`).catch(()=>{});
             } else {
-                targetWindowInfo.locked = true;
-                broadcast('detect-result', { locked: true, hint: '已锁定: ' + detectResult.title });
-                
-                if (floatWindow && !floatWindow.isDestroyed()) {
-                    floatWindow.webContents.executeJavaScript(`
-                        const b = document.getElementById('btn-detect-window');
-                        if (b) b.classList.add('locked');
-                    `).catch(() => {});
-                }
+                targetWindowInfo.hwnd = null;
+                broadcast('detect-result', { locked: true, hint: `已锁定: ${result.title}` });
+                if (floatWindow) floatWindow.webContents.executeJavaScript(`document.getElementById('btn-detect-window')?.classList.add('locked');`).catch(()=>{});
             }
         } else {
             targetWindowInfo.locked = false;
             broadcast('detect-result', { locked: false, hint: '未检测到窗口' });
-            if (floatWindow && !floatWindow.isDestroyed()) {
-                floatWindow.webContents.executeJavaScript(`
-                    const b = document.getElementById('btn-detect-window');
-                    if (b) b.classList.remove('locked');
-                `).catch(() => {});
-            }
+            if (floatWindow) floatWindow.webContents.executeJavaScript(`document.getElementById('btn-detect-window')?.classList.remove('locked');`).catch(()=>{});
         }
     }, 1000);
 }
 
-// ============================================================
-// 广播和UI更新
-// ============================================================
-
 function broadcast(channel, ...args) {
-    const windows = [mainWindow, floatWindow, popupWindow].filter(w => w && !w.isDestroyed());
-    windows.forEach(win => {
+    [mainWindow, floatWindow, popupWindow].filter(w => w && !w.isDestroyed()).forEach(win => {
         try { win.webContents.send(channel, ...args); } catch (e) {}
     });
 }
 
-function refreshMainPlaylist(list, currentId) {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.executeJavaScript(`
-            if (window.PianoUI && window.PianoUI.setPlaylist) {
-                window.PianoUI.setPlaylist(${JSON.stringify(list || [])}, ${JSON.stringify(currentId || null)});
-            }
-        `).catch(() => {});
-    }
-}
-
 function updatePlaylistUI(list, currentId) {
     broadcast('update-playlist', list, currentId);
-    refreshMainPlaylist(list, currentId);
-    if (popupWindow && !popupWindow.isDestroyed()) {
-        popupWindow.webContents.executeJavaScript(`
-            if (window.PianoUI && window.PianoUI.setPopupList) {
-                window.PianoUI.setPopupList(${JSON.stringify(list)}, ${JSON.stringify(currentId)});
-            }
-        `).catch(() => {});
-    }
+    if (mainWindow) mainWindow.webContents.executeJavaScript(`window.PianoUI?.setPlaylist(${JSON.stringify(list)}, ${JSON.stringify(currentId)})`).catch(()=>{});
+    if (popupWindow) popupWindow.webContents.executeJavaScript(`window.PianoUI?.setPopupList(${JSON.stringify(list)}, ${JSON.stringify(currentId)})`).catch(()=>{});
 }
 
 function savePlaylist() {
@@ -510,13 +322,7 @@ function savePlaylist() {
 
 function syncProgress(currentMs, totalMs) {
     broadcast('progress-update', { currentMs, totalMs });
-    if (floatWindow && !floatWindow.isDestroyed()) {
-        floatWindow.webContents.executeJavaScript(`
-            if (window.PianoUI && window.PianoUI.setProgress) {
-                window.PianoUI.setProgress(${currentMs || 0}, ${totalMs || 120000});
-            }
-        `).catch(() => {});
-    }
+    if (floatWindow) floatWindow.webContents.executeJavaScript(`window.PianoUI?.setProgress(${currentMs}, ${totalMs})`).catch(()=>{});
 }
 
 function syncTracks(tracks) {
@@ -528,11 +334,7 @@ function loadItem(id) {
     const item = player.playlist.find(i => i.id === id);
     if (!item) return false;
     
-    if (player.isPlaying) {
-        callPython('stop');
-        player.isPlaying = false;
-    }
-    
+    if (player.isPlaying) callPython('stop');
     player.currentId = id;
     player.currentTime = 0;
     player.totalDuration = 0;
@@ -544,13 +346,11 @@ function loadItem(id) {
     loadMidiPython(item.filePath).then((result) => {
         if (result && result.success) {
             player.totalDuration = result.totalDuration || 120000;
-            player.currentTime = 0;
             syncProgress(0, player.totalDuration);
             broadcast('play-state-changed', false);
-            broadcast('set-status', '已加载　' + HINT_PLAY);
+            broadcast('set-status', `已加载　${HINT_PLAY}`);
         } else {
-            broadcast('set-status', statusLoaded());
-            syncProgress(0, 0);
+            broadcast('set-status', getLoadedStatus());
         }
     });
     return true;
@@ -560,11 +360,7 @@ function playItem(id) {
     const item = player.playlist.find(i => i.id === id);
     if (!item) return;
     
-    if (player.isPlaying) {
-        callPython('stop');
-        player.isPlaying = false;
-    }
-    
+    if (player.isPlaying) callPython('stop');
     player.currentId = id;
     player.currentTime = 0;
     player.totalDuration = 0;
@@ -577,139 +373,76 @@ function playItem(id) {
         if (result && result.success) {
             player.totalDuration = result.totalDuration || 120000;
             syncProgress(0, player.totalDuration);
-            setTimeout(() => {
-                playMidiPython();
-            }, 200);
+            setTimeout(() => playMidiPython(), 200);
         } else {
-            broadcast('set-status', statusLoaded());
+            broadcast('set-status', getLoadedStatus());
         }
     });
 }
 
-// ============================================================
-// 创建窗口函数
-// ============================================================
-
 function createFloatWindow() {
     if (floatWindow && !floatWindow.isDestroyed()) {
         floatWindow.focus();
-        return floatWindow;
+        return;
     }
-    try {
-        const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-        const winX = Math.round((width - 420) / 2);
-        const winY = Math.round((height - 520) / 2);
-        const win = new BrowserWindow({
-            width: 420,
-            height: 520,
-            x: winX,
-            y: winY,
-            alwaysOnTop: true,
-            transparent: true,
-            frame: false,
-            resizable: false,
-            skipTaskbar: true,
-            hasShadow: false,
-            backgroundColor: '#00000000',
-            show: false,
-            webPreferences: {
-                preload: path.join(__dirname, 'preload.js'),
-                contextIsolation: true,
-                nodeIntegration: false,
-                zoomFactor: 1.38,
-            },
-        });
-        const color = loadSettings().themeColor || '#FF8800';
-        win.loadFile(path.join(__dirname, 'renderer', 'ui_preview_landscape.html'), {
-            query: { view: 'float', theme: color }
-        });
-        win.webContents.on('did-finish-load', async () => {
-            win.webContents.insertCSS(`
-                .grabber { -webkit-app-region: drag; }
-                .grabber-bar, .grabber-text { pointer-events: none; }
-                html, body { background: transparent !important; margin: 0; padding: 0; }
-                .float-root { margin: 0; }
-            `);
-            win.webContents.send('set-float-mode', true);
-            
-            let tracks = cachedTracks;
-            if (!tracks || tracks.length === 0) {
-                try {
-                    const tracksResult = await callPython('tracks');
-                    if (tracksResult && tracksResult.tracks) {
-                        tracks = tracksResult.tracks;
-                        cachedTracks = tracks;
-                    }
-                } catch (e) {
-                    console.error('[Main] 获取轨道信息失败:', e);
-                }
-            }
-            
-            win.webContents.executeJavaScript(`
-                (function() {
-                    const params = new URLSearchParams(location.search);
-                    const themeColor = params.get('theme') || '#FF8800';
-                    if (typeof applyAccent === 'function') {
-                        applyAccent(themeColor);
-                    }
-                    const grabber = document.getElementById('float-drag');
-                    if (grabber) {
-                        grabber.style.webkitAppRegion = 'drag';
-                    }
-                    if (window.PianoUI && window.PianoUI.setPlaylist) {
-                        window.PianoUI.setPlaylist(${JSON.stringify(player.playlist)}, ${JSON.stringify(player.currentId)});
-                    }
-                    const currentItem = ${JSON.stringify(player.playlist.find(i => i.id === player.currentId))};
-                    if (currentItem && window.PianoUI && window.PianoUI.setTitle) {
-                        window.PianoUI.setTitle(currentItem.name, '');
-                    } else if (window.PianoUI && window.PianoUI.setTitle) {
-                        window.PianoUI.setTitle('未选择乐曲', '');
-                    }
-                    if (window.PianoUI && window.PianoUI.setTracks) {
-                        window.PianoUI.setTracks(${JSON.stringify(tracks || [])});
-                    }
-                    if (window.PianoUI && window.PianoUI.setProgress) {
-                        window.PianoUI.setProgress(${player.currentTime || 0}, ${player.totalDuration || 120000});
-                    }
-                    if (window.PianoUI && window.PianoUI.setPlaying) {
-                        window.PianoUI.setPlaying(${player.isPlaying});
-                    }
-                    if (window.PianoUI && window.PianoUI.setStatusText) {
-                        window.PianoUI.setStatusText(${JSON.stringify(statusLoaded())});
-                    }
-                    if (window.PianoUI && window.PianoUI.setDetectLocked) {
-                        window.PianoUI.setDetectLocked(${targetWindowInfo.locked === true});
-                    }
-                    document.body.style.transition = 'opacity 0.15s ease';
-                    document.body.style.opacity = '1';
-                })();
-            `).catch(() => {});
-            win.show();
-        });
-        win.on('closed', () => {
-            floatWindow = null;
-            isFloatWindowVisible = false;
-            unregisterGlobalShortcut();
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('overlay-state-changed', false);
-            }
-        });
-        win.on('show', () => {
-            isFloatWindowVisible = true;
-            registerGlobalShortcut();
-        });
-        win.on('hide', () => {
-            isFloatWindowVisible = false;
-            unregisterGlobalShortcut();
-        });
-        floatWindow = win;
-        isFloatWindowVisible = true;
-        registerGlobalShortcut();
-        return win;
-    } catch (err) {
-        console.error('[Main] 创建悬浮窗失败:', err);
-        return null;
-    }
+    const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+    const win = new BrowserWindow({
+        width: 420, height: 520,
+        x: Math.round((width - 420) / 2), y: Math.round((height - 520) / 2),
+        alwaysOnTop: true, transparent: true, frame: false, resizable: false,
+        skipTaskbar: true, hasShadow: false, backgroundColor: '#00000000', show: false,
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            contextIsolation: true, nodeIntegration: false, zoomFactor: 1.38,
+        },
+    });
+    const color = loadSettings().themeColor || '#FF8800';
+    win.loadFile(path.join(__dirname, 'renderer', 'ui_preview_landscape.html'), { query: { view: 'float', theme: color } });
+    
+    win.webContents.on('did-finish-load', async () => {
+        win.webContents.insertCSS(`.grabber{-webkit-app-region:drag}.grabber-bar,.grabber-text{pointer-events:none}html,body{background:transparent!important;margin:0;padding:0}.float-root{margin:0}`);
+        win.webContents.send('set-float-mode', true);
+        
+        let tracks = cachedTracks;
+        if (!tracks || tracks.length === 0) {
+            const res = await callPython('tracks');
+            if (res && res.tracks) { tracks = res.tracks; cachedTracks = tracks; }
+        }
+        
+        win.webContents.executeJavaScript(`
+            (function() {
+                const themeColor = new URLSearchParams(location.search).get('theme') || '#FF8800';
+                if (typeof applyAccent === 'function') applyAccent(themeColor);
+                const grabber = document.getElementById('float-drag');
+                if (grabber) grabber.style.webkitAppRegion = 'drag';
+                
+                window.PianoUI?.setPlaylist(${JSON.stringify(player.playlist)}, ${JSON.stringify(player.currentId)});
+                const cur = ${JSON.stringify(player.playlist.find(i => i.id === player.currentId))};
+                window.PianoUI?.setTitle(cur ? cur.name : '未选择乐曲', '');
+                window.PianoUI?.setTracks(${JSON.stringify(tracks || [])});
+                window.PianoUI?.setProgress(${player.currentTime || 0}, ${player.totalDuration || 120000});
+                window.PianoUI?.setPlaying(${player.isPlaying});
+                window.PianoUI?.setStatusText(${JSON.stringify(getLoadedStatus())});
+                window.PianoUI?.setDetectLocked(${targetWindowInfo.locked === true});
+                
+                document.body.style.transition = 'opacity 0.15s ease';
+                document.body.style.opacity = '1';
+            })();
+        `).catch(()=>{});
+        win.show();
+    });
+    win.on('closed', () => {
+        floatWindow = null;
+        isFloatVisible = false;
+        unregisterGlobalShortcut();
+        if (mainWindow) mainWindow.webContents.send('overlay-state-changed', false);
+    });
+    win.on('show', () => { isFloatVisible = true; registerGlobalShortcut(); });
+    win.on('hide', () => { isFloatVisible = false; unregisterGlobalShortcut(); });
+    
+    floatWindow = win;
+    isFloatVisible = true;
+    registerGlobalShortcut();
 }
 
 function closeFloatWindow() {
@@ -717,261 +450,104 @@ function closeFloatWindow() {
         unregisterGlobalShortcut();
         floatWindow.close();
         floatWindow = null;
-        isFloatWindowVisible = false;
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('overlay-state-changed', false);
-        }
+        isFloatVisible = false;
+        if (mainWindow) mainWindow.webContents.send('overlay-state-changed', false);
     }
 }
 
 function createPopupWindow() {
-    if (popupWindow && !popupWindow.isDestroyed()) {
-        popupWindow.focus();
-        return popupWindow;
-    }
-    try {
-        const pos = getPopupPosition();
-        const win = new BrowserWindow({
-            width: 420,
-            height: 540,
-            x: pos.x,
-            y: pos.y,
-            alwaysOnTop: true,
-            transparent: true,
-            frame: false,
-            resizable: false,
-            skipTaskbar: true,
-            hasShadow: false,
-            backgroundColor: '#00000000',
-            show: false,
-            webPreferences: {
-                preload: path.join(__dirname, 'preload.js'),
-                contextIsolation: true,
-                nodeIntegration: false,
-                zoomFactor: 1.38,
-            },
-        });
-        const color = loadSettings().themeColor || '#FF8800';
-        win.loadFile(path.join(__dirname, 'renderer', 'ui_preview_landscape.html'), {
-            query: { view: 'popup', theme: color }
-        });
-        win.webContents.on('did-finish-load', async () => {
-            win.webContents.insertCSS(`
-                html, body { margin: 0; padding: 0; background: transparent !important; }
-                .popup-root { margin: 0; width: 100%; height: 100%; }
-            `);
-            
-            let tracks = cachedTracks;
-            if (!tracks || tracks.length === 0) {
-                try {
-                    const tracksResult = await callPython('tracks');
-                    if (tracksResult && tracksResult.tracks) {
-                        tracks = tracksResult.tracks;
-                        cachedTracks = tracks;
-                    }
-                } catch (e) {}
-            }
-            
-            win.webContents.executeJavaScript(`
-                (function() {
-                    const params = new URLSearchParams(location.search);
-                    const themeColor = params.get('theme') || '#FF8800';
-                    if (typeof applyAccent === 'function') {
-                        applyAccent(themeColor);
-                    }
-                    if (window.PianoUI && window.PianoUI.setTracks) {
-                        window.PianoUI.setTracks(${JSON.stringify(tracks || [])});
-                    }
-                    document.body.style.transition = 'opacity 0.15s ease';
-                    document.body.style.opacity = '1';
-                })();
-            `).catch(() => {});
-            win.webContents.executeJavaScript(`
-                if (window.PianoUI && window.PianoUI.setPopupList) {
-                    window.PianoUI.setPopupList(${JSON.stringify(player.playlist)}, ${JSON.stringify(player.currentId)});
-                }
-            `);
-            win.show();
-        });
-        win.on('blur', () => {
-            setTimeout(() => {
-                if (popupWindow && !popupWindow.isDestroyed()) {
-                    closePopupWindow();
-                }
-            }, 50);
-        });
-        win.on('closed', () => {
-            popupWindow = null;
-        });
-        popupWindow = win;
-        return win;
-    } catch (err) {
-        console.error('[Main] 创建弹出窗口失败:', err);
-        return null;
-    }
+    if (popupWindow && !popupWindow.isDestroyed()) { popupWindow.focus(); return; }
+    const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+    let x = floatWindow ? floatWindow.getBounds().x + floatWindow.getBounds().width + 10 : Math.round((width - 420) / 2);
+    let y = floatWindow ? floatWindow.getBounds().y : Math.round((height - 540) / 2);
+    if (x + 420 > width) x = floatWindow.getBounds().x - 430;
+    
+    const win = new BrowserWindow({
+        width: 420, height: 540, x, y,
+        alwaysOnTop: true, transparent: true, frame: false, resizable: false,
+        skipTaskbar: true, hasShadow: false, backgroundColor: '#00000000', show: false,
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            contextIsolation: true, nodeIntegration: false, zoomFactor: 1.38,
+        },
+    });
+    const color = loadSettings().themeColor || '#FF8800';
+    win.loadFile(path.join(__dirname, 'renderer', 'ui_preview_landscape.html'), { query: { view: 'popup', theme: color } });
+    
+    win.webContents.on('did-finish-load', () => {
+        win.webContents.insertCSS(`html,body{margin:0;padding:0;background:transparent!important}.popup-root{margin:0;width:100%;height:100%}`);
+        win.webContents.executeJavaScript(`
+            (function() {
+                const themeColor = new URLSearchParams(location.search).get('theme') || '#FF8800';
+                if (typeof applyAccent === 'function') applyAccent(themeColor);
+                window.PianoUI?.setPopupList(${JSON.stringify(player.playlist)}, ${JSON.stringify(player.currentId)});
+                document.body.style.transition = 'opacity 0.15s ease';
+                document.body.style.opacity = '1';
+            })();
+        `).catch(()=>{});
+        win.show();
+    });
+    win.on('blur', () => setTimeout(() => closePopupWindow(), 50));
+    win.on('closed', () => { popupWindow = null; });
+    popupWindow = win;
 }
 
 function closePopupWindow() {
-    if (popupWindow && !popupWindow.isDestroyed()) {
-        popupWindow.close();
-        popupWindow = null;
-    }
-}
-
-function getPopupPosition() {
-    if (!floatWindow || floatWindow.isDestroyed()) {
-        const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-        return { x: Math.round((width - 420) / 2), y: Math.round((height - 540) / 2) };
-    }
-    const bounds = floatWindow.getBounds();
-    const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-    let x = bounds.x + bounds.width + 10;
-    let y = bounds.y;
-    if (x + 420 > width) {
-        x = bounds.x - 420 - 10;
-    }
-    if (x < 0) {
-        x = bounds.x;
-        y = bounds.y + bounds.height + 10;
-    }
-    if (y + 540 > height) {
-        y = bounds.y - 540 - 10;
-    }
-    if (y < 0) {
-        x = Math.round((width - 420) / 2);
-        y = Math.round((height - 540) / 2);
-    }
-    return { x, y };
+    if (popupWindow && !popupWindow.isDestroyed()) { popupWindow.close(); popupWindow = null; }
 }
 
 function createMainWindow() {
     const win = new BrowserWindow({
-        width: 1000,
-        height: 720,
-        resizable: false,
-        maximizable: false,
-        show: false,
-        webPreferences: {
-            preload: path.join(__dirname, 'preload.js'),
-            contextIsolation: true,
-            nodeIntegration: false,
-        },
+        width: 1000, height: 720, resizable: false, maximizable: false, show: false,
+        webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
     });
     win.setTitle('MIDI钢琴播放器');
-    win.setFocusable(true);
-    try {
-        const iconPath = path.join(__dirname, 'icon.ico');
-        if (fs.existsSync(iconPath)) {
-            win.setIcon(iconPath);
-        } else {
-            const pngPath = path.join(__dirname, 'icon.png');
-            if (fs.existsSync(pngPath)) {
-                win.setIcon(pngPath);
-            }
-        }
-    } catch (e) {}
+    
+    const iconPath = path.join(__dirname, 'icon.ico');
+    const pngPath = path.join(__dirname, 'icon.png');
+    try { if (fs.existsSync(iconPath)) win.setIcon(iconPath); else if (fs.existsSync(pngPath)) win.setIcon(pngPath); } catch(e){}
+    
     win.webContents.on('did-finish-load', () => {
         win.focus();
         win.webContents.focus();
-        win.webContents.executeJavaScript(`
-            document.body.style.transition = 'opacity 0.2s ease';
-            document.body.style.opacity = '1';
-            document.body.focus();
-        `).catch(() => {});
+        win.webContents.executeJavaScript(`document.body.style.opacity='1';document.body.focus();`).catch(()=>{});
         win.show();
     });
     win.on('focus', () => {
         win.webContents.focus();
-        win.webContents.executeJavaScript('document.body.focus();').catch(() => {});
-    });
-    win.on('show', () => {
-        win.focus();
-        win.webContents.focus();
+        win.webContents.executeJavaScript('document.body.focus();').catch(()=>{});
     });
     win.loadFile(path.join(__dirname, 'renderer', 'ui_preview_landscape.html'));
     win.on('close', () => {
-        if (floatWindow && !floatWindow.isDestroyed()) {
-            floatWindow.close();
-            floatWindow = null;
-        }
-        if (popupWindow && !popupWindow.isDestroyed()) {
-            popupWindow.close();
-            popupWindow = null;
-        }
-        resetPython();
-    });
-    win.webContents.on('did-finish-load', () => {
-        win.focus();
-        win.webContents.focus();
-        win.webContents.executeJavaScript(`
-            (function() {
-                const sw = document.getElementById('sw-overlay');
-                if (sw) {
-                    sw.checked = false;
-                    const newSw = sw.cloneNode(true);
-                    sw.parentNode.replaceChild(newSw, sw);
-                    newSw.addEventListener('change', function() {
-                        if (window.AndroidBridge && window.AndroidBridge.onOverlayToggle) {
-                            window.AndroidBridge.onOverlayToggle(this.checked);
-                        }
-                    });
-                }
-                document.body.setAttribute('tabindex', '-1');
-                document.body.focus();
-            })();
-        `).catch(() => {});
+        if (floatWindow) floatWindow.close();
+        if (popupWindow) popupWindow.close();
+        callPython('reset');
     });
     mainWindow = win;
-    return win;
 }
 
 async function handleImport() {
     if (!player.folderPath || !fs.existsSync(player.folderPath)) {
         broadcast('set-status', '请先设置文件夹');
-        const r = await dialog.showOpenDialog(mainWindow, {
-            properties: ['openDirectory'],
-            title: '请先选择 MIDI 文件夹'
-        });
-        if (r.canceled || !r.filePaths.length) {
-            broadcast('set-status', statusLoaded());
-            return false;
-        }
+        const r = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'], title: '请先选择 MIDI 文件夹' });
+        if (r.canceled || !r.filePaths.length) { broadcast('set-status', getLoadedStatus()); return false; }
         player.folderPath = r.filePaths[0];
         try {
             const files = fs.readdirSync(player.folderPath).filter(f => /\.(mid|midi)$/i.test(f));
-            const newList = files.map((f, idx) => ({
-                id: Date.now() + '_' + idx,
-                name: f,
-                filePath: path.join(player.folderPath, f),
-            }));
-            player.playlist = player.playlist.concat(newList);
+            player.playlist = player.playlist.concat(files.map((f, i) => ({ id: Date.now() + '_' + i, name: f, filePath: path.join(player.folderPath, f) })));
             savePlaylist();
             updatePlaylistUI(player.playlist, player.currentId);
-            broadcast('set-status', statusLoaded());
-        } catch (err) {
-            broadcast('set-status', statusLoaded());
-            return false;
-        }
+            broadcast('set-status', getLoadedStatus());
+        } catch(e) { broadcast('set-status', getLoadedStatus()); return false; }
     }
-    const r = await dialog.showOpenDialog(mainWindow, {
-        properties: ['openFile'],
-        filters: [{ name: 'MIDI 文件', extensions: ['mid', 'midi'] }],
-        defaultPath: player.folderPath,
-    });
+    const r = await dialog.showOpenDialog(mainWindow, { properties: ['openFile'], filters: [{ name: 'MIDI', extensions: ['mid', 'midi'] }], defaultPath: player.folderPath });
     if (!r.canceled && r.filePaths.length) {
         const filePath = r.filePaths[0];
         const name = path.basename(filePath);
-        const newItem = {
-            id: Date.now() + '_' + Math.random().toString(36).slice(2, 6),
-            name: name,
-            filePath: filePath,
-        };
+        const newItem = { id: Date.now() + '_' + Math.random().toString(36).slice(2, 6), name, filePath };
         player.playlist.push(newItem);
         savePlaylist();
         updatePlaylistUI(player.playlist, player.currentId);
-        
-        player.currentTime = 0;
-        player.totalDuration = 0;
         player.currentId = newItem.id;
         
         const result = await loadMidiPython(filePath);
@@ -980,182 +556,109 @@ async function handleImport() {
             syncProgress(0, player.totalDuration);
             broadcast('set-title', name, '');
             broadcast('play-state-changed', false);
-            broadcast('set-status', '已加载　' + HINT_PLAY);
+            broadcast('set-status', `已加载　${HINT_PLAY}`);
         } else {
-            broadcast('set-status', statusLoaded());
+            broadcast('set-status', getLoadedStatus());
         }
         return true;
     }
     return false;
 }
 
-// ============================================================
-// 全局快捷键
-// ============================================================
 let globalKeyState = { space: false };
 let globalKeyTimer = null;
 
-function clearGlobalTimer() {
-    if (globalKeyTimer) {
-        clearTimeout(globalKeyTimer);
-        globalKeyTimer = null;
-    }
-}
-
-function resetGlobalKeyState() {
-    clearGlobalTimer();
-    globalKeyState.space = false;
-}
-
 function doGlobalPlayPause() {
-    if (!isFloatWindowVisible) return;
-    
+    if (!isFloatVisible) return;
     getStatePython().then(state => {
         if (state && state.isPlaying) {
             pauseMidiPython();
         } else {
-            if (!isWindowLocked()) {
-                console.log('[Main] 未锁定窗口，拒绝播放');
-                broadcast('play-state-changed', false);
-                return;
-            }
-            if (player.totalDuration > 0) {
-                playMidiPython();
-            } else {
-                if (player.currentId) {
-                    const item = player.playlist.find(i => i.id === player.currentId);
-                    if (item) {
-                        loadMidiPython(item.filePath).then((result) => {
-                            if (result && result.totalDuration) {
-                                player.totalDuration = result.totalDuration;
-                                syncProgress(0, result.totalDuration);
-                            }
-                            setTimeout(() => {
-                                playMidiPython();
-                            }, 200);
-                        });
-                    }
-                } else if (player.playlist.length > 0) {
-                    playItem(player.playlist[0].id);
-                } else {
-                    broadcast('set-status', statusLoaded());
-                }
-            }
+            if (!isWindowLocked()) return;
+            if (player.totalDuration > 0) playMidiPython();
+            else if (player.currentId) {
+                const item = player.playlist.find(i => i.id === player.currentId);
+                if (item) loadMidiPython(item.filePath).then(res => {
+                    if (res && res.totalDuration) { player.totalDuration = res.totalDuration; syncProgress(0, res.totalDuration); }
+                    setTimeout(() => playMidiPython(), 200);
+                });
+            } else if (player.playlist.length > 0) playItem(player.playlist[0].id);
         }
     });
 }
 
-function doGlobalReset() {
-    if (!isFloatWindowVisible) return;
-    stopMidiPython();
-}
-
 function handleGlobalKeyPress() {
-    if (!isFloatWindowVisible) return;
+    if (!isFloatVisible) return;
     if (globalKeyState.space) {
-        resetGlobalKeyState();
-        doGlobalReset();
+        clearTimeout(globalKeyTimer);
+        globalKeyState.space = false;
+        stopMidiPython();
         return;
     }
     globalKeyState.space = true;
-    clearGlobalTimer();
     globalKeyTimer = setTimeout(() => {
-        if (globalKeyState.space) {
-            doGlobalPlayPause();
-        }
+        if (globalKeyState.space) doGlobalPlayPause();
         globalKeyState.space = false;
-        globalKeyTimer = null;
     }, 300);
 }
 
 function registerGlobalShortcut() {
-    if (globalShortcutRegistered) return;
-    const ret = globalShortcut.register('Space', () => {
-        handleGlobalKeyPress();
-    });
-    globalShortcutRegistered = ret;
-    return ret;
+    if (isShortcutRegistered) return;
+    isShortcutRegistered = globalShortcut.register('Space', handleGlobalKeyPress);
 }
 
 function unregisterGlobalShortcut() {
-    if (globalShortcutRegistered) {
+    if (isShortcutRegistered) {
         globalShortcut.unregister('Space');
-        globalShortcutRegistered = false;
-        resetGlobalKeyState();
+        isShortcutRegistered = false;
+        globalKeyState.space = false;
+        clearTimeout(globalKeyTimer);
     }
 }
 
-// ============================================================
-// 应用启动
-// ============================================================
-
 app.whenReady().then(() => {
+    detectPythonEnv();
     startPythonService();
     
     const settings = loadSettings();
     player.playlist = settings.playlist || [];
     player.currentId = settings.currentId || null;
     player.folderPath = settings.folderPath || '';
+    
     createMainWindow();
+    
     setTimeout(() => {
         updatePlaylistUI(player.playlist, player.currentId);
         if (player.currentId) {
             const item = player.playlist.find(i => i.id === player.currentId);
-            if (item) {
-                loadMidiPython(item.filePath).then((result) => {
-                    broadcast('set-title', item.name, '');
-                    broadcast('play-state-changed', false);
-                    if (result && result.totalDuration) {
-                        player.totalDuration = result.totalDuration;
-                        syncProgress(0, result.totalDuration);
-                    }
-                    broadcast('set-status', '已加载　' + HINT_PLAY);
-                });
-            } else {
-                broadcast('set-status', statusLoaded());
-            }
+            if (item) loadMidiPython(item.filePath).then(res => {
+                broadcast('set-title', item.name, '');
+                if (res && res.totalDuration) { player.totalDuration = res.totalDuration; syncProgress(0, res.totalDuration); }
+                broadcast('set-status', `已加载　${HINT_PLAY}`);
+                broadcast('play-state-changed', false);
+            });
         } else {
-            broadcast('set-status', statusLoaded());
+            broadcast('set-status', getLoadedStatus());
         }
     }, 500);
-    app.on('activate', () => {
-        if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
-    });
 });
 
 app.on('window-all-closed', () => {
-    if (detectCountdown) {
-        clearInterval(detectCountdown);
-        detectCountdown = null;
-    }
-    if (progressTracker) {
-        clearInterval(progressTracker);
-        progressTracker = null;
-    }
+    if (detectCountdown) clearInterval(detectCountdown);
+    if (progressTracker) clearInterval(progressTracker);
     unregisterGlobalShortcut();
     if (pythonProc) {
-        try {
-            pythonProc.stdin.write(Buffer.from(JSON.stringify({ command: 'exit' }) + '\n', 'utf8'));
-            setTimeout(() => { try { pythonProc.kill(); } catch(e){} }, 500);
-        } catch(e) {}
-        pythonProc = null;
+        try { pythonProc.stdin.write(JSON.stringify({ command: 'exit' }) + '\n'); setTimeout(() => pythonProc.kill(), 500); } catch(e){}
     }
     if (process.platform !== 'darwin') app.quit();
 });
 
 app.on('will-quit', () => {
     globalShortcut.unregisterAll();
-    globalShortcutRegistered = false;
-    if (pythonProc) {
-        try { pythonProc.kill(); } catch(e) {}
-        pythonProc = null;
-    }
+    if (pythonProc) try { pythonProc.kill(); } catch(e){}
 });
 
-// ============================================================
-// IPC 处理
-// ============================================================
-
+// IPC
 ipcMain.handle('getPianoKeys', () => pianoKeys.getPianoKeys());
 ipcMain.handle('getPianoKey', (_, note) => pianoKeys.getPianoKey(note));
 ipcMain.handle('getNoteName', (_, note) => pianoKeys.getNoteName(note));
@@ -1163,256 +666,114 @@ ipcMain.handle('findKeyByScreenPos', (_, x, y) => pianoKeys.findKeyByScreenPos(x
 ipcMain.handle('getScaleFactors', () => pianoKeys.getScaleFactors());
 
 ipcMain.handle('loadMidiFile', async (_, filePath) => {
-    const result = await loadMidiPython(filePath);
-    if (result && result.success) {
-        player.totalDuration = result.totalDuration || 120000;
+    const res = await loadMidiPython(filePath);
+    if (res && res.success) {
+        player.totalDuration = res.totalDuration || 120000;
         broadcast('set-title', path.basename(filePath), '');
         syncProgress(0, player.totalDuration);
         broadcast('play-state-changed', false);
-        broadcast('set-status', '已加载　' + HINT_PLAY);
+        broadcast('set-status', `已加载　${HINT_PLAY}`);
     }
-    return result;
+    return res;
 });
 
-ipcMain.handle('playMidi', async () => {
-    if (player.isPlaying) {
-        await pauseMidiPython();
-    } else {
-        await playMidiPython();
-    }
-    return true;
-});
-
-ipcMain.handle('stopMidi', async () => {
-    await stopMidiPython();
-    return true;
-});
-
-ipcMain.handle('seekMidi', async (_, ratio) => {
-    await seekMidiPython(ratio);
-    return true;
-});
-
-ipcMain.handle('setMidiSpeed', async (_, speed) => {
-    await setSpeedPython(speed);
-    return true;
-});
-
-ipcMain.handle('getMidiState', async () => {
-    return await getStatePython();
-});
-
-ipcMain.handle('getTrackInfo', async () => {
-    if (cachedTracks && cachedTracks.length > 0) {
-        return cachedTracks;
-    }
-    const result = await getTracksPython();
-    if (result && result.tracks) {
-        cachedTracks = result.tracks;
-        return result.tracks;
-    }
-    return [];
-});
-
-ipcMain.handle('toggleTrackMute', async (_, index) => {
-    const result = await toggleTrackPython(index);
-    if (result && result.tracks) {
-        syncTracks(result.tracks);
-    }
-    return result.muted;
-});
+ipcMain.handle('playMidi', async () => { player.isPlaying ? await pauseMidiPython() : await playMidiPython(); return true; });
+ipcMain.handle('stopMidi', async () => { await stopMidiPython(); return true; });
+ipcMain.handle('seekMidi', async (_, r) => { await seekMidiPython(r); return true; });
+ipcMain.handle('setMidiSpeed', async (_, s) => { await setSpeedPython(s); return true; });
+ipcMain.handle('getMidiState', async () => await getStatePython());
+ipcMain.handle('toggleTrackMute', async (_, i) => { const r = await toggleTrackPython(i); if (r && r.tracks) syncTracks(r.tracks); return r.muted; });
 
 ipcMain.handle('onSetFolder', async () => {
-    const r = await dialog.showOpenDialog(mainWindow, {
-        properties: ['openDirectory'],
-        title: '选择 MIDI 文件夹'
-    });
+    const r = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'] });
     if (!r.canceled && r.filePaths.length) {
         player.folderPath = r.filePaths[0];
-        try {
-            const files = fs.readdirSync(player.folderPath).filter(f => /\.(mid|midi)$/i.test(f));
-            const newList = files.map((f, idx) => ({
-                id: Date.now() + '_' + idx,
-                name: f,
-                filePath: path.join(player.folderPath, f),
-            }));
-            player.playlist = player.playlist.concat(newList);
-            savePlaylist();
-            updatePlaylistUI(player.playlist, player.currentId);
-            broadcast('set-status', statusLoaded());
-            return true;
-        } catch (err) {
-            broadcast('set-status', statusLoaded());
-            return false;
-        }
+        const files = fs.readdirSync(player.folderPath).filter(f => /\.(mid|midi)$/i.test(f));
+        player.playlist = player.playlist.concat(files.map((f, i) => ({ id: Date.now() + '_' + i, name: f, filePath: path.join(player.folderPath, f) })));
+        savePlaylist();
+        updatePlaylistUI(player.playlist, player.currentId);
+        broadcast('set-status', getLoadedStatus());
+        return true;
     }
     return false;
 });
 
-ipcMain.handle('onImport', async () => {
-    return await handleImport();
-});
-
-ipcMain.handle('onPopupImport', async () => {
-    return await handleImport();
-});
+ipcMain.handle('onImport', handleImport);
+ipcMain.handle('onPopupImport', handleImport);
 
 ipcMain.handle('onThemeChanged', (_, color) => {
-    const s = loadSettings();
-    s.themeColor = color;
-    saveSettings(s);
+    const s = loadSettings(); s.themeColor = color; saveSettings(s);
     broadcast('theme-changed', color);
     return true;
 });
-
-ipcMain.handle('getThemeColor', () => {
-    return loadSettings().themeColor || '#FF8800';
-});
+ipcMain.handle('getThemeColor', () => loadSettings().themeColor || '#FF8800');
 
 ipcMain.handle('onOverlayToggle', (_, checked) => {
-    if (checked) {
-        createFloatWindow();
-        if (popupWindow && !popupWindow.isDestroyed()) {
-            closePopupWindow();
-        }
-    } else {
-        closeFloatWindow();
-        if (popupWindow && !popupWindow.isDestroyed()) {
-            closePopupWindow();
-        }
-    }
+    if (checked) { createFloatWindow(); closePopupWindow(); }
+    else { closeFloatWindow(); closePopupWindow(); }
     return true;
 });
 
 ipcMain.handle('onTogglePopup', () => {
-    if (popupWindow && !popupWindow.isDestroyed()) {
-        closePopupWindow();
-    } else {
-        createPopupWindow();
-    }
+    popupWindow && !popupWindow.isDestroyed() ? closePopupWindow() : createPopupWindow();
     return true;
 });
 
 ipcMain.handle('onPlayPause', async () => {
-    if (!isFloatWindowVisible) return false;
+    if (!isFloatVisible) return false;
     const state = await getStatePython();
-    if (state && state.isPlaying) {
-        await pauseMidiPython();
-    } else {
-        if (!isWindowLocked()) {
-            console.log('[Main] 未锁定窗口，拒绝播放');
-            broadcast('play-state-changed', false);
-            return false;
-        }
-        if (player.totalDuration > 0) {
-            await playMidiPython();
-        } else if (player.currentId) {
+    if (state && state.isPlaying) await pauseMidiPython();
+    else if (isWindowLocked()) {
+        if (player.totalDuration > 0) await playMidiPython();
+        else if (player.currentId) {
             const item = player.playlist.find(i => i.id === player.currentId);
             if (item) {
-                const result = await loadMidiPython(item.filePath);
-                if (result && result.totalDuration) {
-                    player.totalDuration = result.totalDuration;
-                    syncProgress(0, result.totalDuration);
-                }
-                setTimeout(async () => {
-                    await playMidiPython();
-                }, 200);
+                const res = await loadMidiPython(item.filePath);
+                if (res && res.totalDuration) { player.totalDuration = res.totalDuration; syncProgress(0, res.totalDuration); }
+                setTimeout(async () => await playMidiPython(), 200);
             }
-        } else if (player.playlist.length > 0) {
-            playItem(player.playlist[0].id);
-        } else {
-            broadcast('set-status', statusLoaded());
-            return false;
-        }
+        } else if (player.playlist.length > 0) playItem(player.playlist[0].id);
     }
     return true;
 });
 
-ipcMain.handle('onReset', async () => {
-    if (!isFloatWindowVisible) return false;
-    await stopMidiPython();
-    return true;
-});
+ipcMain.handle('onReset', async () => { if (isFloatVisible) await stopMidiPython(); return true; });
 
 ipcMain.handle('onMinimize', () => {
-    if (floatWindow && !floatWindow.isDestroyed()) {
-        closeFloatWindow();
-        if (popupWindow && !popupWindow.isDestroyed()) {
-            closePopupWindow();
-        }
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            // 1. 通知主页把悬浮窗开关置为未选中
-            mainWindow.webContents.send('overlay-state-changed', false);
-            // 2. 主页置顶、聚焦、恢复显示
-            if (mainWindow.isMinimized()) mainWindow.restore();
-            mainWindow.setAlwaysOnTop(true);
-            mainWindow.show();
-            mainWindow.focus();
-            // 3. 短暂置顶后取消置顶（避免永久置顶）
-            setTimeout(() => {
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    mainWindow.setAlwaysOnTop(false);
-                }
-            }, 500);
-        }
-    } else {
-        // 悬浮窗本来就关着，直接让主页置顶聚焦
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            if (mainWindow.isMinimized()) mainWindow.restore();
-            mainWindow.setAlwaysOnTop(true);
-            mainWindow.show();
-            mainWindow.focus();
-            setTimeout(() => {
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    mainWindow.setAlwaysOnTop(false);
-                }
-            }, 500);
-        }
+    closeFloatWindow();
+    closePopupWindow();
+    if (mainWindow) {
+        mainWindow.webContents.send('overlay-state-changed', false);
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.setAlwaysOnTop(true);
+        mainWindow.show();
+        mainWindow.focus();
+        setTimeout(() => { if (mainWindow) mainWindow.setAlwaysOnTop(false); }, 500);
     }
     return true;
 });
 
-ipcMain.handle('onClose', () => {
-    app.quit();
-    return true;
-});
+ipcMain.handle('onClose', () => { app.quit(); return true; });
 
 ipcMain.handle('onSpeedChange', async (_, delta) => {
     const state = await getStatePython();
-    let newSpeed = (state.speed || 1.0) + delta * 0.05;
-    newSpeed = Math.max(0.05, Math.min(2.0, Math.round(newSpeed / 0.05) * 0.05));
+    let newSpeed = Math.max(0.05, Math.min(2.0, Math.round(((state.speed || 1.0) + delta * 0.05) / 0.05) * 0.05));
     await setSpeedPython(newSpeed);
-    broadcast('speed-changed', newSpeed);
     return true;
 });
 
 ipcMain.handle('onSetSpeed', async (_, speed) => {
-    let newSpeed = Math.max(0.05, Math.min(2.0, speed));
-    newSpeed = Math.round(newSpeed / 0.05) * 0.05;
+    let newSpeed = Math.max(0.05, Math.min(2.0, Math.round(speed / 0.05) * 0.05));
     await setSpeedPython(newSpeed);
-    broadcast('speed-changed', newSpeed);
     return true;
 });
 
-ipcMain.handle('getSpeed', async () => {
-    const state = await getStatePython();
-    return state.speed || 1.0;
-});
-
-ipcMain.handle('onSeek', async (_, ratio) => {
-    await seekMidiPython(ratio);
-    return true;
-});
-
-ipcMain.handle('onSelectItem', async (_, id) => {
-    if (player.isPlaying) {
-        await stopMidiPython();
-    }
-    return loadItem(id);
-});
+ipcMain.handle('getSpeed', async () => (await getStatePython()).speed || 1.0);
+ipcMain.handle('onSeek', async (_, r) => { await seekMidiPython(r); return true; });
+ipcMain.handle('onSelectItem', async (_, id) => { if (player.isPlaying) await stopMidiPython(); return loadItem(id); });
 
 ipcMain.handle('onDeleteItem', (_, id) => {
-    player.playlist = player.playlist.filter(item => item.id !== id);
+    player.playlist = player.playlist.filter(i => i.id !== id);
     if (player.currentId === id) {
         player.currentId = null;
         stopMidiPython();
@@ -1425,7 +786,7 @@ ipcMain.handle('onDeleteItem', (_, id) => {
 });
 
 ipcMain.handle('onDeletePopupItem', (_, id) => {
-    player.playlist = player.playlist.filter(item => item.id !== id);
+    player.playlist = player.playlist.filter(i => i.id !== id);
     if (player.currentId === id) {
         player.currentId = null;
         stopMidiPython();
@@ -1437,73 +798,25 @@ ipcMain.handle('onDeletePopupItem', (_, id) => {
     return true;
 });
 
-ipcMain.handle('onPopupClose', () => {
-    closePopupWindow();
-    return true;
-});
-
+ipcMain.handle('onPopupClose', () => { closePopupWindow(); return true; });
 ipcMain.handle('onDetectWindow', () => {
-    if (floatWindow && !floatWindow.isDestroyed()) {
-        floatWindow.webContents.send('detect-countdown-start', 5);
-    }
+    if (floatWindow) floatWindow.webContents.send('detect-countdown-start', 5);
     startDetectCountdown();
     return true;
 });
 
 ipcMain.handle('onSaveImage', async (_, src) => {
     try {
-        let srcPath;
-        if (path.isAbsolute(src)) {
-            srcPath = src;
-        } else {
-            const tryPaths = [
-                path.join(__dirname, 'renderer', src),
-                path.join(__dirname, src),
-                path.join(process.resourcesPath, 'app.asar', 'renderer', src),
-                path.join(process.resourcesPath, 'app.asar', src),
-            ];
-            srcPath = tryPaths.find(p => {
-                try { return fs.existsSync(p); } catch (e) { return false; }
-            });
-        }
-        
-        if (!srcPath || !fs.existsSync(srcPath)) {
-            console.error('[Main] 找不到图片:', src);
-            return { success: false, error: '找不到图片文件' };
-        }
-        
-        const downloadsDir = app.getPath('downloads');
-        if (!fs.existsSync(downloadsDir)) {
-            fs.mkdirSync(downloadsDir, { recursive: true });
-        }
-        
-        const ext = path.extname(srcPath);
-        const baseName = path.basename(srcPath, ext);
-        let destName = baseName + ext;
-        let destPath = path.join(downloadsDir, destName);
-        let counter = 1;
-        while (fs.existsSync(destPath)) {
-            destName = baseName + '_' + counter + ext;
-            destPath = path.join(downloadsDir, destName);
-            counter++;
-        }
-        
-        fs.copyFileSync(srcPath, destPath);
-        
-        // 把目标文件的修改时间设为当前时间
-        const now = new Date();
-        fs.utimesSync(destPath, now, now);
-        
-        console.log('[Main] 图片已保存:', destPath);
-        
-        return { success: true, path: destPath, name: destName };
-    } catch (e) {
-        console.error('[Main] 保存图片失败:', e);
-        return { success: false, error: e.message };
-    }
+        const imgPath = path.join(__dirname, 'renderer', src);
+        if (!fs.existsSync(imgPath)) return { success: false };
+        const dlDir = app.getPath('downloads');
+        const ext = path.extname(imgPath);
+        const destName = path.basename(imgPath, ext) + ext;
+        let destPath = path.join(dlDir, destName);
+        let count = 1;
+        while (fs.existsSync(destPath)) { destPath = path.join(dlDir, `${path.basename(imgPath, ext)}_${count}${ext}`); count++; }
+        fs.copyFileSync(imgPath, destPath);
+        fs.utimesSync(destPath, new Date(), new Date());
+        return { success: true, name: path.basename(destPath) };
+    } catch (e) { return { success: false }; }
 });
-
-setTimeout(() => {
-    broadcast('progress-update', { currentMs: 0, totalMs: 120000 });
-    broadcast('speed-changed', 1.0);
-}, 500);

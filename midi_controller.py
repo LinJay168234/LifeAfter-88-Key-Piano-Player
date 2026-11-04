@@ -1,8 +1,5 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""
-MIDI 控制器 - 常驻服务模式
-"""
 
 import ctypes
 import sys
@@ -14,15 +11,21 @@ import threading
 import struct
 from ctypes import wintypes
 
-# 设置所有标准流为 UTF-8 编码
 if sys.platform == 'win32':
     import io
     sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', line_buffering=True)
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', line_buffering=True)
 
-# Windows API
 user32 = ctypes.windll.user32
+
+try:
+    ctypes.windll.shcore.SetProcessDpiAwareness(2)
+except Exception:
+    try:
+        ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
 
 MOUSEEVENTF_MOVE = 0x0001
 MOUSEEVENTF_ABSOLUTE = 0x8000
@@ -55,49 +58,34 @@ MIDI_TO_COORDS = {
     106: (1850, 936), 107: (1864, 1035), 108: (1901, 1035)
 }
 
-
 def save_state(hwnd, title):
     try:
-        state = {'hwnd': hwnd, 'title': title, 'timestamp': time.time()}
         with open(STATE_FILE, 'w', encoding='utf-8') as f:
-            json.dump(state, f, ensure_ascii=False)
-        return True
-    except:
-        return False
-
-
-def load_state():
-    try:
-        if not os.path.exists(STATE_FILE):
-            return None
-        with open(STATE_FILE, 'r', encoding='utf-8') as f:
-            state = json.load(f)
-        if time.time() - state.get('timestamp', 0) > 60:
-            return None
-        return state
-    except:
-        return None
-
-
-def clear_state():
-    try:
-        if os.path.exists(STATE_FILE):
-            os.remove(STATE_FILE)
+            json.dump({'hwnd': hwnd, 'title': title, 'timestamp': time.time()}, f, ensure_ascii=False)
     except:
         pass
 
+def load_state():
+    try:
+        if not os.path.exists(STATE_FILE): return None
+        with open(STATE_FILE, 'r', encoding='utf-8') as f:
+            state = json.load(f)
+        return None if time.time() - state.get('timestamp', 0) > 60 else state
+    except:
+        return None
+
+def clear_state():
+    try: os.remove(STATE_FILE)
+    except: pass
 
 def get_screen_size():
     return user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
 
-
 def click_at(x, y):
     sw, sh = get_screen_size()
-    abs_x = int((x / sw) * 65535)
-    abs_y = int((y / sh) * 65535)
+    abs_x, abs_y = int((x / sw) * 65535), int((y / sh) * 65535)
     flags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_LEFTUP
     user32.mouse_event(flags, abs_x, abs_y, 0, 0)
-
 
 def get_active_window():
     try:
@@ -107,38 +95,44 @@ def get_active_window():
             user32.GetWindowTextW(hwnd, title_buf, 256)
             title = title_buf.value
             if title:
-                rect = ctypes.wintypes.RECT()
-                user32.GetWindowRect(hwnd, ctypes.byref(rect))
+                client_rect = wintypes.RECT()
+                user32.GetClientRect(hwnd, ctypes.byref(client_rect))
+                pt = wintypes.POINT(0, 0)
+                user32.ClientToScreen(hwnd, ctypes.byref(pt))
                 return {
-                    'hwnd': hwnd,
-                    'title': title,
-                    'rect': (rect.left, rect.top, rect.right, rect.bottom),
-                    'width': rect.right - rect.left,
-                    'height': rect.bottom - rect.top
+                    'hwnd': hwnd, 'title': title,
+                    'rect': (pt.x, pt.y, pt.x + client_rect.right, pt.y + client_rect.bottom),
+                    'width': client_rect.right, 'height': client_rect.bottom
                 }
     except:
         pass
     return None
 
+def get_window_info(hwnd):
+    try:
+        if not user32.IsWindow(hwnd): return None
+        client_rect = wintypes.RECT()
+        user32.GetClientRect(hwnd, ctypes.byref(client_rect))
+        pt = wintypes.POINT(0, 0)
+        user32.ClientToScreen(hwnd, ctypes.byref(pt))
+        return {
+            'hwnd': hwnd, 'rect': (pt.x, pt.y, pt.x + client_rect.right, pt.y + client_rect.bottom),
+            'width': client_rect.right, 'height': client_rect.bottom
+        }
+    except:
+        return None
 
 def scale_coordinates(window_info, base_x, base_y):
-    if not window_info:
-        return base_x, base_y
-    win_left = window_info['rect'][0]
-    win_top = window_info['rect'][1]
-    win_width = window_info['width']
-    win_height = window_info['height']
-    scale = win_width / BASE_WIDTH
-    base_bottom = BASE_HEIGHT - base_y
-    scaled_x = base_x * scale
-    scaled_y = win_height - base_bottom * scale
-    return int(win_left + scaled_x), int(win_top + scaled_y)
-
+    if not window_info: return base_x, base_y
+    win_left, win_top = window_info['rect'][0], window_info['rect'][1]
+    win_width, win_height = window_info['width'], window_info['height']
+    scale_x = win_width / BASE_WIDTH
+    scale_y = win_height / BASE_HEIGHT
+    return int(win_left + base_x * scale_x), int(win_top + base_y * scale_y)
 
 def ensure_window_active(hwnd):
     try:
-        current = user32.GetForegroundWindow()
-        if current != hwnd:
+        if user32.GetForegroundWindow() != hwnd:
             user32.ShowWindow(hwnd, SW_RESTORE)
             user32.SetForegroundWindow(hwnd)
             time.sleep(0.05)
@@ -147,611 +141,287 @@ def ensure_window_active(hwnd):
     except:
         return False
 
-
-def get_window_info(hwnd):
-    try:
-        if not user32.IsWindow(hwnd):
-            return None
-        rect = ctypes.wintypes.RECT()
-        user32.GetWindowRect(hwnd, ctypes.byref(rect))
-        return {
-            'hwnd': hwnd,
-            'rect': (rect.left, rect.top, rect.right, rect.bottom),
-            'width': rect.right - rect.left,
-            'height': rect.bottom - rect.top
-        }
-    except:
-        return None
-
-
 def read_var_length(data, offset):
-    value = 0
+    val = 0
     while True:
-        byte = data[offset]
-        offset += 1
-        value = (value << 7) | (byte & 0x7F)
-        if not (byte & 0x80):
-            break
-    return value, offset
-
+        b = data[offset]; offset += 1
+        val = (val << 7) | (b & 0x7F)
+        if not (b & 0x80): break
+    return val, offset
 
 class MidiParser:
     def __init__(self):
-        self.events = []
-        self.total_duration = 0.0
-        self.ticks_per_beat = 480
-        self.tempo_events = []
-        self.track_info = []
-
+        self.events, self.total_duration = [], 0.0
+        self.ticks_per_beat, self.tempo_events, self.track_info = 480, [], []
+    
     def parse(self, file_path):
-        with open(file_path, 'rb') as f:
-            data = f.read()
-
-        offset = 0
-        data_len = len(data)
-
-        if data[offset:offset+4] != b'MThd':
-            print('[MidiParser] 无效的 MIDI 文件头', file=sys.stderr)
-            return False
-
+        with open(file_path, 'rb') as f: data = f.read()
+        offset, data_len = 0, len(data)
+        if data[offset:offset+4] != b'MThd': return False
         offset += 4
-        header_len = struct.unpack('>I', data[offset:offset+4])[0]
-        offset += 4
-        format_type = struct.unpack('>H', data[offset:offset+2])[0]
-        offset += 2
-        num_tracks = struct.unpack('>H', data[offset:offset+2])[0]
-        offset += 2
-        self.ticks_per_beat = struct.unpack('>H', data[offset:offset+2])[0]
-        offset += 2
-
-        if self.ticks_per_beat == 0:
-            self.ticks_per_beat = 480
-
-        print(f'[MidiParser] 格式: {format_type}, 轨道数: {num_tracks}, ticks_per_beat: {self.ticks_per_beat}', file=sys.stderr)
-
-        tracks_data = []
-        self.track_info = []
-
+        header_len = struct.unpack('>I', data[offset:offset+4])[0]; offset += 4
+        format_type = struct.unpack('>H', data[offset:offset+2])[0]; offset += 2
+        num_tracks = struct.unpack('>H', data[offset:offset+2])[0]; offset += 2
+        self.ticks_per_beat = struct.unpack('>H', data[offset:offset+2])[0]; offset += 2
+        if self.ticks_per_beat == 0: self.ticks_per_beat = 480
+        
+        tracks_data, self.track_info = [], []
         for track_idx in range(num_tracks):
-            if offset + 4 > data_len:
-                break
-            if data[offset:offset+4] != b'MTrk':
-                print(f'[MidiParser] 轨道 {track_idx} 头无效', file=sys.stderr)
-                break
+            if offset + 4 > data_len or data[offset:offset+4] != b'MTrk': break
             offset += 4
-            track_len = struct.unpack('>I', data[offset:offset+4])[0]
-            offset += 4
-            track_end = offset + track_len
-            track_end = min(track_end, data_len)
-
-            track_events = []
-            track_tick = 0
-            running_status = 0
-
+            track_len = struct.unpack('>I', data[offset:offset+4])[0]; offset += 4
+            track_end = min(offset + track_len, data_len)
+            track_events, track_tick, running_status = [], 0, 0
+            
             while offset < track_end:
-                try:
-                    delta, offset = read_var_length(data, offset)
-                except:
-                    break
+                try: delta, offset = read_var_length(data, offset)
+                except: break
                 track_tick += delta
-
-                if offset >= data_len:
-                    break
-
+                if offset >= data_len: break
+                
                 status = data[offset]
-
-                if status & 0x80:
-                    event_type = status
-                    offset += 1
-                else:
-                    event_type = running_status
-
+                if status & 0x80: event_type = status; offset += 1
+                else: event_type = running_status
                 running_status = event_type
                 cmd = event_type >> 4
-
-                if cmd == 0x8:
-                    if offset + 1 >= track_end:
-                        break
-                    note = data[offset]
-                    velocity = data[offset + 1]
-                    offset += 2
-                    track_events.append(('note_off', track_tick, note, 0))
-
-                elif cmd == 0x9:
-                    if offset + 1 >= track_end:
-                        break
-                    note = data[offset]
-                    velocity = data[offset + 1]
-                    offset += 2
-                    if velocity > 0:
+                
+                if cmd in (0x8, 0x9):
+                    if offset + 1 >= track_end: break
+                    note, velocity = data[offset], data[offset+1]; offset += 2
+                    if cmd == 0x9 and velocity > 0:
                         track_events.append(('note_on', track_tick, note, velocity))
                     else:
                         track_events.append(('note_off', track_tick, note, 0))
-
-                elif cmd == 0xA:
-                    offset += 2
-                elif cmd == 0xB:
-                    offset += 2
-                elif cmd == 0xC:
-                    offset += 1
-                elif cmd == 0xD:
-                    offset += 1
-                elif cmd == 0xE:
-                    offset += 2
+                elif cmd in (0xA, 0xB, 0xE): offset += 2
+                elif cmd in (0xC, 0xD): offset += 1
                 elif cmd == 0xF:
                     if status == 0xFF:
-                        if offset >= track_end:
-                            break
-                        meta_type = data[offset]
-                        offset += 1
+                        if offset >= track_end: break
+                        meta_type = data[offset]; offset += 1
                         meta_len, offset = read_var_length(data, offset)
-                        meta_data = data[offset:offset+meta_len]
-                        offset += meta_len
-
+                        meta_data = data[offset:offset+meta_len]; offset += meta_len
                         if meta_type == 0x51 and meta_len >= 3:
                             tempo = (meta_data[0] << 16) | (meta_data[1] << 8) | meta_data[2]
                             self.tempo_events.append((track_tick, tempo))
                     else:
-                        sysex_len, offset = read_var_length(data, offset)
-                        offset += sysex_len
-
+                        sysex_len, offset = read_var_length(data, offset); offset += sysex_len
+            
             note_count = sum(1 for e in track_events if e[0] == 'note_on')
-
             tracks_data.append((track_idx, track_events))
-
-            # 使用固定名称「音轨 N」，不读取 MIDI 中的轨道名
-            self.track_info.append({
-                'index': track_idx,
-                'name': f'音轨 {track_idx + 1}',
-                'noteCount': note_count,
-                'enabled': True
-            })
-
-            print(f'[MidiParser] 轨道 {track_idx}: {note_count} 个音符, {len(track_events)} 个事件', file=sys.stderr)
-
-        if not self.tempo_events:
-            self.tempo_events.append((0, 500000))
+            self.track_info.append({'index': track_idx, 'name': f'音轨 {track_idx + 1}', 'noteCount': note_count, 'enabled': True})
+        
+        if not self.tempo_events: self.tempo_events.append((0, 500000))
         self.tempo_events.sort(key=lambda x: x[0])
-
-        print(f'[MidiParser] tempo 事件数: {len(self.tempo_events)}', file=sys.stderr)
-
+        
         def tick_to_sec(tick):
-            if tick <= 0:
-                return 0.0
-            seconds = 0.0
-            current_tempo = 500000
-            last_tick = 0
-            for tempo_tick, tempo_us in self.tempo_events:
-                if tempo_tick >= tick:
-                    break
-                delta_ticks = tempo_tick - last_tick
-                seconds += delta_ticks * (current_tempo / self.ticks_per_beat / 1000000.0)
-                current_tempo = tempo_us
-                last_tick = tempo_tick
-            delta_ticks = tick - last_tick
-            seconds += delta_ticks * (current_tempo / self.ticks_per_beat / 1000000.0)
-            return seconds
-
-        all_events = []
-        max_time = 0
-
+            if tick <= 0: return 0.0
+            sec, cur_tempo, last_tick = 0.0, 500000, 0
+            for t_tick, t_us in self.tempo_events:
+                if t_tick >= tick: break
+                sec += (t_tick - last_tick) * (cur_tempo / self.ticks_per_beat / 1000000.0)
+                cur_tempo = t_us; last_tick = t_tick
+            sec += (tick - last_tick) * (cur_tempo / self.ticks_per_beat / 1000000.0)
+            return sec
+        
+        all_events, max_time = [], 0
         for track_idx, track_events in tracks_data:
             for evt_type, tick, note, velocity in track_events:
                 time_sec = tick_to_sec(tick)
-                if time_sec > max_time:
-                    max_time = time_sec
-
-                if evt_type == 'note_on':
-                    all_events.append((time_sec, note, velocity, True, track_idx))
-                elif evt_type == 'note_off':
-                    all_events.append((time_sec, note, 0, False, track_idx))
-
+                max_time = max(max_time, time_sec)
+                if evt_type == 'note_on': all_events.append((time_sec, note, velocity, True, track_idx))
+                elif evt_type == 'note_off': all_events.append((time_sec, note, 0, False, track_idx))
+        
         all_events.sort(key=lambda x: x[0])
-
         self.events = all_events
         self.total_duration = max_time
-
-        print(f'[MidiParser] 总事件数: {len(self.events)}', file=sys.stderr)
-        print(f'[MidiParser] 总时长: {self.total_duration:.2f} 秒', file=sys.stderr)
-
         return True
-
 
 class MidiController:
     def __init__(self):
-        self.target_hwnd = None
-        self.target_title = ""
-        self.is_playing = False
-        self.is_paused = False
-        self.speed = 1.0
-        self.current_time = 0.0
-        self.events = []
-        self.total_duration = 0.0
-        self.track_info = []
-        self.muted_tracks = set()
-        self.play_thread = None
-        self.stop_flag = False
-        self.pause_flag = False
-        self.seek_request = None
-        self.speed_request = None
-        self.loaded_file = ""
+        self.target_hwnd, self.target_title = None, ""
+        self.is_playing, self.is_paused, self.speed, self.current_time = False, False, 1.0, 0.0
+        self.events, self.total_duration, self.track_info, self.muted_tracks = [], 0.0, [], set()
+        self.play_thread, self.stop_flag, self.pause_flag = None, False, False
+        self.seek_request, self.speed_request, self.loaded_file = None, None, ""
+        self._thread_lock, self._play_generation = threading.Lock(), 0
         
-        # 播放代次：每次启动新线程 +1，旧线程检测到代次不匹配立即退出
-        self._thread_lock = threading.Lock()
-        self._play_generation = 0
-
         state = load_state()
         if state:
-            self.target_hwnd = state['hwnd']
-            self.target_title = state['title']
-
+            self.target_hwnd, self.target_title = state['hwnd'], state['title']
+    
     def load_midi(self, file_path):
-        if not os.path.exists(file_path):
-            print(f'[MidiController] 文件不存在: {file_path}', file=sys.stderr)
-            return False
-
-        if self.is_playing:
-            self.stop()
-            time.sleep(0.1)
-
-        print(f'[MidiController] 加载 MIDI: {file_path}', file=sys.stderr)
-
+        if not os.path.exists(file_path): return False
+        if self.is_playing: self.stop(); time.sleep(0.1)
         parser = MidiParser()
-        if not parser.parse(file_path):
-            return False
-
-        self.events = parser.events
-        self.total_duration = parser.total_duration
-        self.track_info = parser.track_info
-        self.muted_tracks = set()
-        self.current_time = 0.0
-        self.loaded_file = file_path
-
-        self.is_playing = False
-        self.is_paused = False
-        self.stop_flag = False
-        self.pause_flag = False
-        self.seek_request = None
-        self.speed_request = None
-
-        print(f'[MidiController] 加载完成: {len(self.events)} 个事件, {self.total_duration:.2f} 秒', file=sys.stderr)
+        if not parser.parse(file_path): return False
+        self.events, self.total_duration = parser.events, parser.total_duration
+        self.track_info, self.muted_tracks = parser.track_info, set()
+        self.current_time, self.loaded_file = 0.0, file_path
+        self.is_playing, self.is_paused = False, False
+        self.stop_flag, self.pause_flag = False, False
+        self.seek_request, self.speed_request = None, None
         return True
-
+    
     def get_tracks(self):
-        result = []
-        for t in self.track_info:
-            result.append({
-                'index': t['index'],
-                'name': t['name'],
-                'noteCount': t['noteCount'],
-                'enabled': t['index'] not in self.muted_tracks
-            })
-        return result
-
+        return [{'index': t['index'], 'name': t['name'], 'noteCount': t['noteCount'], 'enabled': t['index'] not in self.muted_tracks} for t in self.track_info]
+    
     def toggle_track_mute(self, index):
-        if index in self.muted_tracks:
-            self.muted_tracks.discard(index)
-            muted = False
-        else:
-            self.muted_tracks.add(index)
-            muted = True
-        return muted
-
+        if index in self.muted_tracks: self.muted_tracks.discard(index); return False
+        self.muted_tracks.add(index); return True
+    
     def detect_window(self):
-        print('[MidiController] 立即检测窗口...', file=sys.stderr)
         info = get_active_window()
         if info:
-            self.target_hwnd = info['hwnd']
-            self.target_title = info['title']
+            self.target_hwnd, self.target_title = info['hwnd'], info['title']
             save_state(info['hwnd'], info['title'])
-            print(f'[MidiController] 已锁定: {info["title"]}', file=sys.stderr)
             return {'success': True, 'title': info['title']}
         return {'success': False, 'error': '未检测到窗口'}
-
+    
     def get_window_info(self):
         if not self.target_hwnd:
             state = load_state()
-            if state:
-                self.target_hwnd = state['hwnd']
-                self.target_title = state['title']
-            else:
-                return {'available': False}
-
+            if state: self.target_hwnd, self.target_title = state['hwnd'], state['title']
+            else: return {'available': False}
         info = get_window_info(self.target_hwnd)
-        if info:
-            return {
-                'available': True,
-                'title': self.target_title,
-                'rect': info['rect'],
-                'width': info['width'],
-                'height': info['height'],
-                'hwnd': self.target_hwnd
-            }
-        return {'available': False}
-
+        return {'available': True, 'title': self.target_title, 'rect': info['rect'], 'width': info['width'], 'height': info['height'], 'hwnd': self.target_hwnd} if info else {'available': False}
+    
     def click_note(self, note, velocity):
-        if not self.target_hwnd:
-            return False
-        if note not in MIDI_TO_COORDS:
-            return False
+        if not self.target_hwnd or note not in MIDI_TO_COORDS: return False
         ensure_window_active(self.target_hwnd)
         info = get_window_info(self.target_hwnd)
-        if not info:
-            return False
-        base_x, base_y = MIDI_TO_COORDS[note]
-        x, y = scale_coordinates(info, base_x, base_y)
+        if not info: return False
+        x, y = scale_coordinates(info, *MIDI_TO_COORDS[note])
         click_at(x, y)
         return True
-
+    
     def play(self):
-        if self.is_playing and not self.is_paused:
-            return
-
-        if not self.events:
-            print('[MidiController] 没有加载 MIDI 文件或没有音符', file=sys.stderr)
-            return
-
-        if not self.target_hwnd:
-            print('[MidiController] 未锁定窗口，拒绝播放', file=sys.stderr)
-            return
-
-        self.is_playing = True
-        self.is_paused = False
-        self.stop_flag = False
-        self.pause_flag = False
-        self.seek_request = None
-        self.speed_request = None
-
-        if self.current_time >= self.total_duration:
-            self.current_time = 0.0
-
+        if self.is_playing and not self.is_paused: return
+        if not self.events or not self.target_hwnd or not user32.IsWindow(self.target_hwnd): return
+        self.is_playing, self.is_paused = True, False
+        self.stop_flag, self.pause_flag = False, False
+        self.seek_request, self.speed_request = None, None
+        if self.current_time >= self.total_duration: self.current_time = 0.0
         with self._thread_lock:
             self._play_generation += 1
-            gen = self._play_generation
-            self.play_thread = threading.Thread(
-                target=self._play_loop, args=(gen,), daemon=True
-            )
+            self.play_thread = threading.Thread(target=self._play_loop, args=(self._play_generation,), daemon=True)
             self.play_thread.start()
-        print('[MidiController] 开始播放', file=sys.stderr)
-
-    def pause(self):
-        self.is_paused = True
-        self.pause_flag = True
-
-    def stop(self):
-        self.stop_flag = True
-        self.is_playing = False
-        self.is_paused = False
-        self.current_time = 0.0
-
+    
+    def pause(self): self.is_paused, self.pause_flag = True, True
+    def stop(self): self.stop_flag, self.is_playing, self.is_paused, self.current_time = True, False, False, 0.0
+    
     def set_speed(self, speed):
         self.speed = max(0.05, min(2.0, speed))
-        if self.is_playing and not self.is_paused:
-            self.speed_request = self.speed
-
+        if self.is_playing and not self.is_paused: self.speed_request = self.speed
+    
     def seek(self, ratio):
         target = ratio * self.total_duration
         self.current_time = target
-        if self.is_playing and not self.is_paused:
-            self.seek_request = target
-
-    def _play_loop(self, generation):
-        """
-        播放循环：
-        - 每次循环开始时消费 seek_request 作为起始位置
-        - 循环中检测到 seek_request 就退出并启动新线程
-        - 通过 generation 确保只有最新的线程在跑
-        """
-        if generation != self._play_generation:
-            print(f'[MidiController] 线程 gen={generation} 已过期，退出', file=sys.stderr)
-            return
-
+        if self.is_playing and not self.is_paused: self.seek_request = target
+    
+    def _play_loop(self, gen):
+        if gen != self._play_generation: return
         if self.seek_request is not None:
-            self.current_time = self.seek_request
-            self.seek_request = None
-            print(f'[MidiController] 新循环从 seek 位置 {self.current_time:.2f}s 开始', file=sys.stderr)
-
-        playback_start_time = time.perf_counter()
-        playback_start_pos = self.current_time
-        current_speed = self.speed
-
-        event_index = 0
-        for i, evt in enumerate(self.events):
-            if evt[0] >= playback_start_pos:
-                event_index = i
-                break
-
-        print(f'[MidiController] 播放循环开始 (gen={generation}), 从 {playback_start_pos:.2f}s, 事件 {event_index}', file=sys.stderr)
-
+            self.current_time, self.seek_request = self.seek_request, None
+        
+        start_time, start_pos, cur_speed = time.perf_counter(), self.current_time, self.speed
+        event_idx = next((i for i, evt in enumerate(self.events) if evt[0] >= start_pos), len(self.events))
+        
         try:
-            while not self.stop_flag and event_index < len(self.events):
-                if generation != self._play_generation:
-                    print(f'[MidiController] 线程 gen={generation} 被取代，退出', file=sys.stderr)
-                    return
-
+            while not self.stop_flag and event_idx < len(self.events):
+                if gen != self._play_generation: return
                 if self.seek_request is not None:
-                    print('[MidiController] 检测到 seek，退出当前循环并启动新线程', file=sys.stderr)
                     with self._thread_lock:
                         self._play_generation += 1
-                        new_gen = self._play_generation
-                        self.play_thread = threading.Thread(
-                            target=self._play_loop, args=(new_gen,), daemon=True
-                        )
+                        self.play_thread = threading.Thread(target=self._play_loop, args=(self._play_generation,), daemon=True)
                         self.play_thread.start()
                     return
-
+                
                 if self.pause_flag:
-                    elapsed = (time.perf_counter() - playback_start_time) * current_speed
-                    paused_pos = playback_start_pos + elapsed
+                    elapsed = (time.perf_counter() - start_time) * cur_speed
                     time.sleep(0.01)
-                    playback_start_time = time.perf_counter()
-                    playback_start_pos = paused_pos
+                    start_time, start_pos = time.perf_counter(), start_pos + elapsed
                     continue
-
+                
                 if self.speed_request is not None:
-                    elapsed = (time.perf_counter() - playback_start_time) * current_speed
-                    current_music_pos = playback_start_pos + elapsed
-
-                    current_speed = self.speed_request
+                    elapsed = (time.perf_counter() - start_time) * cur_speed
+                    start_time, start_pos = time.perf_counter(), start_pos + elapsed
+                    cur_speed, self.speed = self.speed_request, self.speed_request
                     self.speed_request = None
-                    self.speed = current_speed
-
-                    playback_start_time = time.perf_counter()
-                    playback_start_pos = current_music_pos
                     continue
-
-                event = self.events[event_index]
-                event_time = event[0]
-                note = event[1]
-                velocity = event[2]
-                is_on = event[3]
-                track_idx = event[4] if len(event) > 4 else 0
-
-                now = time.perf_counter()
-                current_music_pos = playback_start_pos + (now - playback_start_time) * current_speed
-
-                if current_music_pos >= event_time:
-                    if is_on and velocity > 0:
-                        if track_idx not in self.muted_tracks:
-                            self.click_note(note, velocity)
-                    event_index += 1
-                    self.current_time = event_time
+                
+                evt = self.events[event_idx]
+                evt_time, note, vel, is_on, track_idx = evt[0], evt[1], evt[2], evt[3], (evt[4] if len(evt) > 4 else 0)
+                cur_pos = start_pos + (time.perf_counter() - start_time) * cur_speed
+                
+                if cur_pos >= evt_time:
+                    if is_on and vel > 0 and track_idx not in self.muted_tracks: self.click_note(note, vel)
+                    event_idx += 1
+                    self.current_time = evt_time
                     continue
-
-                wait_time = (event_time - current_music_pos) / current_speed
-                interrupted = False
+                
+                wait_time, interrupted = (evt_time - cur_pos) / cur_speed, False
                 while wait_time > 0:
                     if self.stop_flag or self.pause_flag or self.seek_request is not None:
-                        interrupted = True
-                        break
-                    if generation != self._play_generation:
-                        return
-                    sleep_chunk = min(0.005, wait_time)
-                    time.sleep(sleep_chunk)
-                    now = time.perf_counter()
-                    current_music_pos = playback_start_pos + (now - playback_start_time) * current_speed
-                    wait_time = (event_time - current_music_pos) / current_speed
-
-                if interrupted:
-                    continue
-
-                if is_on and velocity > 0:
-                    if track_idx not in self.muted_tracks:
-                        self.click_note(note, velocity)
-
-                event_index += 1
-                self.current_time = event_time
-
-            if not self.stop_flag and generation == self._play_generation:
-                self.current_time = self.total_duration
-                self.is_playing = False
-                print('[MidiController] 播放完成', file=sys.stderr)
-        except Exception as e:
-            print(f'[MidiController] 播放错误: {e}', file=sys.stderr)
+                        interrupted = True; break
+                    if gen != self._play_generation: return
+                    time.sleep(min(0.005, wait_time))
+                    cur_pos = start_pos + (time.perf_counter() - start_time) * cur_speed
+                    wait_time = (evt_time - cur_pos) / cur_speed
+                
+                if interrupted: continue
+                if is_on and vel > 0 and track_idx not in self.muted_tracks: self.click_note(note, vel)
+                event_idx += 1
+                self.current_time = evt_time
+                
+            if not self.stop_flag and gen == self._play_generation:
+                self.current_time, self.is_playing = self.total_duration, False
+        except Exception:
             self.is_playing = False
 
     def get_state(self):
-        return {
-            'isPlaying': self.is_playing and not self.is_paused,
-            'currentTime': self.current_time * 1000,
-            'totalDuration': self.total_duration * 1000,
-            'speed': self.speed,
-            'eventCount': len(self.events),
-            'loadedFile': self.loaded_file
-        }
-
+        return {'isPlaying': self.is_playing and not self.is_paused, 'currentTime': self.current_time * 1000, 'totalDuration': self.total_duration * 1000, 'speed': self.speed, 'eventCount': len(self.events), 'loadedFile': self.loaded_file}
 
 def handle_command(controller, data):
-    command = data.get('command', '')
-
-    if command == 'detect':
-        return controller.detect_window()
-    elif command == 'info':
-        return controller.get_window_info()
-    elif command == 'load':
-        file_path = data.get('filePath', '')
-        success = controller.load_midi(file_path)
-        if success:
-            return {
-                'success': True,
-                'totalDuration': controller.total_duration * 1000,
-                'eventCount': len(controller.events),
-                'currentTime': 0,
-                'tracks': controller.get_tracks()
-            }
-        return {'success': False}
-    elif command == 'tracks':
-        return {'tracks': controller.get_tracks()}
-    elif command == 'toggle_track':
-        index = data.get('index', 0)
-        muted = controller.toggle_track_mute(index)
-        return {'success': True, 'muted': muted, 'tracks': controller.get_tracks()}
-    elif command == 'play':
-        controller.play()
-        return {'success': True}
-    elif command == 'pause':
-        controller.pause()
-        return {'success': True}
-    elif command == 'stop':
+    cmd = data.get('command', '')
+    if cmd == 'detect': return controller.detect_window()
+    if cmd == 'info': return controller.get_window_info()
+    if cmd == 'load':
+        success = controller.load_midi(data.get('filePath', ''))
+        return {'success': True, 'totalDuration': controller.total_duration * 1000, 'eventCount': len(controller.events), 'currentTime': 0, 'tracks': controller.get_tracks()} if success else {'success': False}
+    if cmd == 'tracks': return {'tracks': controller.get_tracks()}
+    if cmd == 'toggle_track': return {'success': True, 'muted': controller.toggle_track_mute(data.get('index', 0)), 'tracks': controller.get_tracks()}
+    if cmd == 'play': controller.play(); return {'success': True}
+    if cmd == 'pause': controller.pause(); return {'success': True}
+    if cmd == 'stop': controller.stop(); return {'success': True}
+    if cmd == 'seek': controller.seek(data.get('ratio', 0)); return {'success': True}
+    if cmd == 'speed': controller.set_speed(data.get('speed', 1.0)); return {'success': True}
+    if cmd == 'state': return controller.get_state()
+    if cmd == 'click': return {'success': controller.click_note(data.get('note', 0), data.get('velocity', 100))}
+    if cmd == 'reset':
         controller.stop()
-        return {'success': True}
-    elif command == 'seek':
-        ratio = data.get('ratio', 0)
-        controller.seek(ratio)
-        return {'success': True}
-    elif command == 'speed':
-        speed = data.get('speed', 1.0)
-        controller.set_speed(speed)
-        return {'success': True}
-    elif command == 'state':
-        return controller.get_state()
-    elif command == 'click':
-        note = data.get('note', 0)
-        velocity = data.get('velocity', 100)
-        result = controller.click_note(note, velocity)
-        return {'success': result}
-    elif command == 'reset':
-        controller.stop()
-        controller.events = []
-        controller.total_duration = 0.0
-        controller.current_time = 0.0
-        controller.track_info = []
-        controller.muted_tracks = set()
-        controller.target_hwnd = None
-        controller.target_title = ""
+        controller.events, controller.total_duration, controller.current_time = [], 0.0, 0.0
+        controller.track_info, controller.muted_tracks = [], set()
+        controller.target_hwnd, controller.target_title = None, ""
         clear_state()
         return {'success': True}
-    elif command == 'exit':
-        return {'status': 'bye', 'exit': True}
-    else:
-        return {'error': f'未知命令: {command}'}
-
+    if cmd == 'ping': return {'status': 'ok'}
+    if cmd == 'exit': return {'status': 'bye', 'exit': True}
+    return {'error': f'未知命令: {cmd}'}
 
 def main():
     controller = MidiController()
-    print('[MidiController] 服务已启动', file=sys.stderr)
-
     for line in sys.stdin:
         line = line.strip()
-        if not line:
-            continue
-
-        try:
-            data = json.loads(line)
+        if not line: continue
+        try: data = json.loads(line)
         except Exception as e:
-            print(json.dumps({'error': f'JSON 解析错误: {e}'}), flush=True)
-            continue
-
+            print(json.dumps({'error': str(e)}), flush=True); continue
         try:
             result = handle_command(controller, data)
             print(json.dumps(result, ensure_ascii=False), flush=True)
-            if result and result.get('exit'):
-                break
+            if result and result.get('exit'): break
         except Exception as e:
             print(json.dumps({'error': str(e)}), flush=True)
-
-    print('[MidiController] 服务已退出', file=sys.stderr)
-
 
 if __name__ == '__main__':
     main()

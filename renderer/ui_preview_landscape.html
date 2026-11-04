@@ -1,4 +1,10 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>/* PianoClick 横屏界面样式 - 整体滚动版 */
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MIDI钢琴播放器</title>
+<style>
 * {
   margin: 0; padding: 0; box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
@@ -36,14 +42,13 @@
   --accent-ring: #FF880047;
   --ease-soft: cubic-bezier(.4, 0, .2, 1);
   --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
-  --ease-snap: cubic-bezier(.25, .8, .25, 1);
   --scrollbar-thumb: var(--accent);
   --scrollbar-track: rgba(255,255,255,0.06);
 }
 
 body {
   background: var(--bg-deep);
-  font-family: -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+  font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -54,964 +59,231 @@ body.app-body { background: transparent; margin: 0; overflow: hidden; height: 10
 body.view-float, body.view-popup { background: transparent; }
 body.view-float .view.active, body.view-popup .view.active { background: transparent; }
 
-/* ============================================================
-   主界面 - 整体滚动
-   ============================================================ */
+/* 主界面 */
 .main-root {
-  width: 100%;
-  max-width: 1080px;
-  min-width: 640px;
-  margin: 0 auto;
-  padding: 20px 24px 24px;
-  box-sizing: border-box;
-  background: var(--bg);
-  border-radius: 4px;
+  width: 100%; max-width: 1080px; min-width: 640px;
+  margin: 0 auto; padding: 20px 24px 24px;
+  background: var(--bg); border-radius: 4px;
   box-shadow: 0 8px 40px rgba(0,0,0,.5);
-  overflow-y: auto;
-  overflow-x: hidden;
-  max-height: 100vh;
-  height: 100vh;
-  -webkit-overflow-scrolling: touch;
-  scroll-behavior: smooth;
-  scrollbar-gutter: stable;
+  overflow-y: auto; overflow-x: hidden;
+  height: 100vh; scroll-behavior: smooth;
 }
 
-.main-root::-webkit-scrollbar {
-  width: 5px;
-}
-.main-root::-webkit-scrollbar-track {
-  background: var(--scrollbar-track);
-  border-radius: 10px;
-  margin: 8px 0;
-}
-.main-root::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
-  border-radius: 10px;
-  min-height: 40px;
-  transition: background 0.3s ease;
-}
-.main-root::-webkit-scrollbar-thumb:hover {
-  background: var(--accent-bright);
-  opacity: 0.9;
-}
-.main-root {
-  scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
-}
+.main-root::-webkit-scrollbar { width: 5px; }
+.main-root::-webkit-scrollbar-track { background: var(--scrollbar-track); border-radius: 10px; margin: 8px 0; }
+.main-root::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 10px; min-height: 40px; }
+.main-root { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track); }
 
-.main-root .main-title {
-  color: var(--text-primary);
-  font-size: 24px;
-  font-weight: bold;
-  text-align: left;
-  margin: 0 0 16px;
-}
+.main-title { color: var(--text-primary); font-size: 24px; font-weight: bold; margin-bottom: 16px; }
+.landscape-columns { display: flex; gap: 24px; align-items: flex-start; min-height: 0; }
+.landscape-left { flex: 0 0 340px; max-width: 380px; display: flex; flex-direction: column; min-height: 0; }
+.landscape-right { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 
-.landscape-columns {
-  display: flex;
-  gap: 24px;
-  align-items: flex-start;
-  min-height: 0;
-}
-
-.landscape-left {
-  flex: 0 0 340px;
-  max-width: 380px;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.landscape-right {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.card {
-  display: flex; align-items: center; justify-content: space-between;
-  background: var(--card);
-  padding: 16px;
-  border-radius: 4px;
-  margin-bottom: 12px;
-  min-height: 56px;
-}
+.card { display: flex; align-items: center; justify-content: space-between; background: var(--card); padding: 16px; border-radius: 4px; margin-bottom: 12px; min-height: 56px; }
 .card-label { color: var(--text-primary); font-size: 16px; }
 
-.hint {
-  color: var(--text-tertiary);
-  font-size: 12px;
-  line-height: 1.6;
-  margin: 2px 0 20px;
-}
-
-.list-header {
-  display: flex; align-items: center;
-  margin-bottom: 10px;
-}
-.list-title {
-  flex: 1;
-  color: var(--text-primary); font-size: 16px; font-weight: bold;
-}
+.hint { color: var(--text-tertiary); font-size: 12px; line-height: 1.6; margin: 2px 0 20px; }
+.list-header { display: flex; align-items: center; margin-bottom: 10px; }
+.list-title { flex: 1; color: var(--text-primary); font-size: 16px; font-weight: bold; }
 
 .btn {
-  border: none; cursor: pointer;
-  height: 36px; padding: 0 14px;
-  border-radius: 4px;
-  color: var(--text-primary);
-  font-size: 12px;
-  font-family: inherit;
-  transition: background .2s var(--ease-soft), transform .18s var(--ease-spring), box-shadow .25s var(--ease-soft), filter .2s var(--ease-soft);
+  border: none; cursor: pointer; height: 36px; padding: 0 14px; border-radius: 4px;
+  color: var(--text-primary); font-size: 12px; font-family: inherit;
+  transition: background .2s var(--ease-soft), transform .18s var(--ease-spring), box-shadow .25s var(--ease-soft);
 }
 .btn-folder { background: var(--accent-softest); color: #1a1c2e; margin-right: 8px; }
 .btn-folder:active { box-shadow: 0 0 0 4px var(--accent-ring); }
 .btn-import { background: var(--accent-soft); color: var(--accent-text); font-weight: bold; }
 .btn-import:active { box-shadow: 0 0 0 4px var(--accent-ring); }
 
-.playlist {
-  background: var(--card);
-  border-radius: 4px;
-  overflow-y: auto;
-  overflow-x: hidden;
-  max-height: 400px;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-gutter: stable;
-}
+.playlist { background: var(--card); border-radius: 4px; overflow-y: auto; overflow-x: hidden; max-height: 400px; }
 .playlist::-webkit-scrollbar { width: 5px; }
 .playlist::-webkit-scrollbar-track { background: var(--scrollbar-track); border-radius: 10px; margin: 8px 0; }
 .playlist::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 10px; min-height: 40px; }
-.playlist { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track); }
 
-.pl-item {
-  display: flex; align-items: center;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--divider-soft);
-  cursor: pointer;
-  border-radius: 4px;
-  transition: background .2s var(--ease-soft), box-shadow .25s var(--ease-soft);
-}
+.pl-item { display: flex; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--divider-soft); cursor: pointer; border-radius: 4px; }
 .pl-item:last-child { border-bottom: none; }
 .pl-item:hover { background: var(--card-hover); }
 .pl-item:active { background: var(--accent-soft); opacity: .9; box-shadow: inset 0 0 0 2px var(--accent-ring); }
 .pl-info { flex: 1; min-width: 0; }
-.pl-name {
-  color: var(--text-primary);
-  font-size: 15px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.pl-del {
-  color: var(--text-dim); font-size: 14px;
-  padding: 4px 6px; margin-left: 8px;
-  border-radius: 50%;
-  transition: color .2s var(--ease-soft), transform .18s var(--ease-spring), box-shadow .25s var(--ease-soft), background .2s var(--ease-soft);
-}
-.pl-del:active { transform: scale(1.15); color: var(--close-red); background: rgba(224,85,85,.2); box-shadow: 0 0 0 4px rgba(224,85,85,.25); }
+.pl-name { color: var(--text-primary); font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-del { color: var(--text-dim); font-size: 14px; padding: 4px 6px; margin-left: 8px; border-radius: 50%; }
+.pl-del:active { transform: scale(1.15); color: var(--close-red); background: rgba(224,85,85,.2); }
 .pl-del:hover { color: var(--close-red); }
 
-/* 开关 */
 .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
 .switch input { opacity: 0; width: 0; height: 0; }
 .switch:active .slider { box-shadow: 0 0 0 2px var(--accent-ring); }
-.slider {
-  position: absolute; inset: 0; cursor: pointer;
-  background: var(--track-bg); border-radius: 12px;
-  transition: background .25s var(--ease-soft);
-}
-.slider::before {
-  content: ""; position: absolute;
-  width: 20px; height: 20px; left: 2px; top: 2px;
-  background: var(--thumb-bg); border-radius: 50%;
-  transition: transform .3s var(--ease-spring), background .25s var(--ease-soft);
-  will-change: transform;
-}
+.slider { position: absolute; inset: 0; cursor: pointer; background: var(--track-bg); border-radius: 12px; transition: background .25s; }
+.slider::before { content: ""; position: absolute; width: 20px; height: 20px; left: 2px; top: 2px; background: var(--thumb-bg); border-radius: 50%; transition: transform .3s var(--ease-spring), background .25s; }
 .switch input:checked + .slider { background: var(--accent); }
 .switch input:checked + .slider::before { transform: translateX(20px); background: #fff; }
 
-/* ============================================================
-   悬浮窗 - 自适应放大版
-   ============================================================ */
-.float-root {
-  width: 100%;
-  min-width: 100%;
-  max-width: 100%;
-  background: var(--float-bg);
-  border: 1px solid var(--float-border);
-  border-radius: 18px;
-  padding: 12px;
-  box-sizing: border-box;
-  max-height: 100vh;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-.float-root::-webkit-scrollbar {
-  width: 4px;
-}
-.float-root::-webkit-scrollbar-track {
-  background: transparent;
-}
-.float-root::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
-  border-radius: 2px;
-}
-.float-root {
-  scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-thumb) transparent;
-}
-.grabber {
-  position: relative;
-  height: 16px;
-  margin-bottom: 6px;
-  -webkit-app-region: drag;
-}
-.grabber-bar {
-  position: absolute; top: 50%; left: 0; right: 0;
-  height: 3px; background: var(--divider);
-  transform: translateY(-50%);
-  pointer-events: none;
-}
-.grabber-text {
-  position: absolute; inset: 0;
-  display: flex; align-items: center; justify-content: center;
-  color: var(--text-dim); font-size: 11px;
-  pointer-events: none;
-}
+/* 悬浮窗 */
+.float-root { width: 100%; max-width: 100%; background: var(--float-bg); border: 1px solid var(--float-border); border-radius: 18px; padding: 12px; max-height: 100vh; overflow-y: auto; overflow-x: hidden; }
+.float-root::-webkit-scrollbar { width: 4px; }
+.float-root::-webkit-scrollbar-track { background: transparent; }
+.float-root::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 2px; }
+
+.grabber { position: relative; height: 16px; margin-bottom: 6px; -webkit-app-region: drag; }
+.grabber-bar { position: absolute; top: 50%; left: 0; right: 0; height: 3px; background: var(--divider); transform: translateY(-50%); pointer-events: none; }
+.grabber-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-dim); font-size: 11px; pointer-events: none; }
+
 .float-title-block { width: 100%; margin-bottom: 8px; }
-.float-title {
-  color: var(--text-primary);
-  font-size: 18px;
-  font-weight: bold;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.float-subtitle {
-  color: var(--text-secondary);
-  font-size: 14px;
-  margin-top: 4px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  transition: color 0.3s ease;
-}
-.float-detect-hint {
-  margin-top: 2px;
-  color: var(--text-dim);
-  font-size: 11px;
-  line-height: 1.4;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+.float-title { color: var(--text-primary); font-size: 18px; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.float-subtitle { color: var(--text-secondary); font-size: 14px; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.float-detect-hint { margin-top: 2px; color: var(--text-dim); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.seek-row {
-  display: flex; align-items: center;
-  margin-top: 8px;
-}
-.time-txt {
-  color: var(--text-tertiary);
-  font-size: 12px;
-  white-space: nowrap;
-  width: 50px;
-  flex: 0 0 50px;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-
+.seek-row { display: flex; align-items: center; margin-top: 8px; }
+.time-txt { color: var(--text-tertiary); font-size: 12px; width: 50px; flex: 0 0 50px; text-align: center; font-variant-numeric: tabular-nums; }
 .seekbar { position: relative; flex: 1; margin: 0 9px; height: 22px; cursor: pointer; touch-action: none; }
-.seekbar-track {
-  position: absolute; top: 50%; left: 0; right: 0;
-  height: 6px; transform: translateY(-50%);
-  background: var(--track-bg); border-radius: 3px;
-}
-.seekbar-fill {
-  height: 100%; border-radius: 3px;
-  background: linear-gradient(to right, var(--accent-bright), var(--accent-grad-end));
-}
-.seekbar-thumb {
-  position: absolute; top: 50%; transform: translate(-50%, -50%);
-  width: 18px; height: 18px; border-radius: 50%;
-  background: var(--accent-bright);
-  border: 2px solid #FFFFFF;
-  box-shadow: 0 1px 3px rgba(0,0,0,.4);
-}
+.seekbar-track { position: absolute; top: 50%; left: 0; right: 0; height: 6px; transform: translateY(-50%); background: var(--track-bg); border-radius: 3px; }
+.seekbar-fill { height: 100%; border-radius: 3px; background: linear-gradient(to right, var(--accent-bright), var(--accent-grad-end)); }
+.seekbar-thumb { position: absolute; top: 50%; transform: translate(-50%, -50%); width: 18px; height: 18px; border-radius: 50%; background: var(--accent-bright); border: 2px solid #FFF; }
 
-.speed-row {
-  display: flex; align-items: center;
-  margin-top: 6px;
-}
+.speed-row { display: flex; align-items: center; margin-top: 6px; }
 .speed-label { color: var(--text-tertiary); font-size: 11px; margin-right: 2px; }
-.speed-btn {
-  color: var(--accent-soft);
-  font-size: 20px;
-  font-weight: bold;
-  width: 22px;
-  height: 22px;
-  line-height: 22px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  border-radius: 50%;
-  transition: background .15s var(--ease-soft), transform .15s var(--ease-spring), box-shadow .25s var(--ease-soft);
-}
-.speed-btn:active { background: rgba(255,255,255,.18); transform: scale(1.15); box-shadow: 0 0 0 5px var(--press-ring); }
+.speed-btn { color: var(--accent-soft); font-size: 20px; font-weight: bold; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 50%; }
+.speed-btn:active { background: rgba(255,255,255,.18); transform: scale(1.15); }
 .seek-speed { margin: 0 9px; }
-.speed-value {
-  color: var(--accent-soft);
-  font-size: 13px;
-  font-weight: bold;
-  width: 40px;
-  flex: 0 0 40px;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
+.speed-value { color: var(--accent-soft); font-size: 13px; font-weight: bold; width: 40px; flex: 0 0 40px; text-align: right; }
 
-.ctrl-row {
-  display: flex; align-items: center; justify-content: center;
-  margin-top: 6px;
-}
-.icon-btn {
-  display: flex; align-items: center; justify-content: center;
-  width: 36px;
-  height: 36px;
-  cursor: pointer;
-  border-radius: 50%;
-  transition: background .2s var(--ease-soft), transform .18s var(--ease-spring), box-shadow .25s var(--ease-soft);
-}
-.icon-btn:active {
-  transform: scale(.88);
-  box-shadow: 0 0 0 5px rgba(255,255,255,.10);
-}
-.icon-btn:hover { background: rgba(255,255,255,.08); }
+.ctrl-row { display: flex; align-items: center; justify-content: center; margin-top: 6px; }
+.icon-btn { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; cursor: pointer; border-radius: 50%; }
+.icon-btn:active { transform: scale(.88); background: rgba(255,255,255,.08); }
 .icon-btn.icon-neu { color: var(--text-secondary); }
 .icon-btn.icon-folder { color: var(--folder-blue); }
-.play-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 48px;
-  height: 48px;
-  margin: 0 8px;
-  background: var(--accent-bright);
-  border: 2px solid var(--accent-soft);
-  border-radius: 50%;
-  cursor: pointer;
-  transition: transform .2s var(--ease-spring), box-shadow .25s var(--ease-soft);
-}
-.play-btn:active {
-  transform: scale(.9);
-  box-shadow: 0 0 0 6px rgba(255,255,255,.18);
-  filter: brightness(1.12);
-}
-.close-btn {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--close-red);
-  font-size: 16px;
-  font-weight: bold;
-  margin-left: 4px;
-  cursor: pointer;
-  border-radius: 50%;
-  transition: background .2s var(--ease-soft), transform .18s var(--ease-spring), box-shadow .25s var(--ease-soft);
-}
-.close-btn:active {
-  transform: scale(.85);
-  background: rgba(224,85,85,.28);
-  box-shadow: 0 0 0 5px rgba(224,85,85,.25);
-}
+.play-btn { display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; margin: 0 8px; background: var(--accent-bright); border: 2px solid var(--accent-soft); border-radius: 50%; cursor: pointer; }
+.play-btn:active { transform: scale(.9); filter: brightness(1.12); }
+
+.close-btn { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; color: var(--close-red); font-size: 16px; font-weight: bold; margin-left: 4px; cursor: pointer; border-radius: 50%; }
+.close-btn:active { transform: scale(.85); background: rgba(224,85,85,.28); }
 .close-btn:hover { background: rgba(224,85,85,.15); }
 
 .track-section { margin-top: 8px; }
-.track-toggle {
-  color: var(--text-secondary);
-  font-size: 14px;
-  padding: 6px 0;
-  cursor: pointer;
-  border-radius: 4px;
-  transition: background .15s var(--ease-soft), box-shadow .25s var(--ease-soft);
-  user-select: none;
-}
-.track-toggle:active { background: rgba(255,255,255,.1); box-shadow: inset 0 0 0 2px var(--accent-ring); }
+.track-toggle { color: var(--text-secondary); font-size: 14px; padding: 6px 0; cursor: pointer; border-radius: 4px; }
+.track-toggle:active { background: rgba(255,255,255,.1); }
 
-.track-scroll {
-  max-height: 0;
-  overflow: hidden;
-  opacity: 0;
-  transform: translateY(-4px);
-  transition: max-height .3s var(--ease-soft), opacity .25s var(--ease-soft), transform .25s var(--ease-soft);
-  width: 100%;
-}
-.track-scroll.open {
-  max-height: 90px;
-  opacity: 1;
-  transform: translateY(0);
-  overflow-x: auto;
-  overflow-y: hidden;
-  cursor: grab;
-}
-.track-scroll.open:active {
-  cursor: grabbing;
-}
-.track-scroll::-webkit-scrollbar {
-  height: 5px;
-}
-.track-scroll::-webkit-scrollbar-track {
-  background: var(--scrollbar-track);
-  border-radius: 4px;
-}
-.track-scroll::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
-  border-radius: 4px;
-}
-.track-scroll::-webkit-scrollbar-thumb:hover {
-  background: var(--accent-bright);
-}
-.track-scroll {
-  scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
-}
+.track-scroll { max-height: 0; overflow: hidden; opacity: 0; transform: translateY(-4px); transition: max-height .3s, opacity .25s; width: 100%; }
+.track-scroll.open { max-height: 90px; opacity: 1; transform: translateY(0); overflow-x: auto; overflow-y: hidden; cursor: grab; }
+.track-scroll.open:active { cursor: grabbing; }
+.track-scroll::-webkit-scrollbar { height: 5px; }
+.track-scroll::-webkit-scrollbar-track { background: var(--scrollbar-track); border-radius: 4px; }
+.track-scroll::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 4px; }
 
-.track-list {
-  display: inline-flex;
-  gap: 16px;
-  padding: 6px 4px;
-  align-items: stretch;
-  min-width: 100%;
-  width: max-content;
-}
-.track-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-  user-select: none;
-  white-space: nowrap;
-  padding: 4px 8px;
-  border-radius: 4px;
-  transition: background .2s var(--ease-soft), box-shadow .25s var(--ease-soft);
-  flex-shrink: 0;
-}
-.track-item:active { background: rgba(255,255,255,.12); box-shadow: inset 0 0 0 2px rgba(255,255,255,.12); }
-.track-checkbox {
-  width: 18px; height: 18px; flex-shrink: 0;
-  border: 2px solid var(--track-inactive);
-  border-radius: 3px;
-  background: transparent;
-  position: relative;
-  transition: background .2s var(--ease-soft), border-color .2s var(--ease-soft);
-}
-.track-checkbox::after {
-  content: "";
-  position: absolute;
-  left: 4px;
-  top: 1px;
-  width: 5px;
-  height: 9px;
-  border: solid #fff;
-  border-width: 0 2px 2px 0;
-  transform: rotate(45deg) scale(0);
-  transition: transform .25s var(--ease-spring);
-  will-change: transform;
-}
-.track-item.checked .track-checkbox {
-  background: var(--accent);
-  border-color: var(--accent);
-}
+.track-list { display: inline-flex; gap: 16px; padding: 6px 4px; align-items: stretch; min-width: 100%; width: max-content; }
+.track-item { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap; padding: 4px 8px; border-radius: 4px; flex-shrink: 0; }
+.track-item:active { background: rgba(255,255,255,.12); }
+.track-checkbox { width: 18px; height: 18px; flex-shrink: 0; border: 2px solid var(--track-inactive); border-radius: 3px; position: relative; }
+.track-checkbox::after { content: ""; position: absolute; left: 4px; top: 1px; width: 5px; height: 9px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg) scale(0); transition: transform .25s var(--ease-spring); }
+.track-item.checked .track-checkbox { background: var(--accent); border-color: var(--accent); }
 .track-item.checked .track-checkbox::after { transform: rotate(45deg) scale(1); }
-.track-text {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  line-height: 1.2;
-}
-.track-name {
-  color: var(--text-secondary);
-  font-size: 14px;
-}
-.track-count {
-  color: var(--text-dim);
-  font-size: 12px;
-}
+.track-text { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.2; }
+.track-name { color: var(--text-secondary); font-size: 14px; }
+.track-count { color: var(--text-dim); font-size: 12px; }
 
-/* ============================================================
-   弹出播放列表 - 自适应放大版
-   ============================================================ */
-.popup-root {
-  width: 100%;
-  min-width: 100%;
-  max-width: 100%;
-  height: 100%;
-  max-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: var(--float-bg);
-  border: 1px solid var(--float-border);
-  border-radius: 18px;
-  padding: 16px;
-  box-sizing: border-box;
-}
-.popup-header {
-  display: flex; align-items: center;
-  margin-bottom: 10px;
-}
-.popup-title {
-  flex: 1;
-  color: var(--text-primary);
-  font-size: 16px;
-  font-weight: bold;
-}
-.popup-list {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  border-radius: 4px;
-  scrollbar-gutter: stable;
-}
+/* 弹出列表 */
+.popup-root { width: 100%; height: 100%; max-height: 100vh; display: flex; flex-direction: column; background: var(--float-bg); border: 1px solid var(--float-border); border-radius: 18px; padding: 16px; }
+.popup-header { display: flex; align-items: center; margin-bottom: 10px; }
+.popup-title { flex: 1; color: var(--text-primary); font-size: 16px; font-weight: bold; }
+.popup-list { flex: 1; min-height: 0; overflow-y: auto; border-radius: 4px; }
 .popup-list::-webkit-scrollbar { width: 5px; }
 .popup-list::-webkit-scrollbar-track { background: var(--scrollbar-track); border-radius: 10px; margin: 8px 0; }
 .popup-list::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 10px; min-height: 40px; }
 .popup-list .pl-item { background: transparent; }
 
-/* ============================================================
-   主题色设置（可折叠）
-   ============================================================ */
-.theme-card {
-  flex-direction: column;
-  align-items: stretch;
-  padding: 0;
-  overflow: visible;
-}
-
-.theme-toggle {
-  display: flex; align-items: center; justify-content: space-between;
-  width: 100%;
-  padding: 16px;
-  min-height: 56px;
-  cursor: pointer;
-  color: var(--text-primary); font-size: 16px;
-  border-radius: 4px;
-  transition: background .15s var(--ease-soft), box-shadow .25s var(--ease-soft);
-  position: relative;
-  z-index: 2;
-}
-.theme-toggle:active { background: rgba(255,255,255,.08); box-shadow: inset 0 0 0 2px var(--accent-ring); }
+/* 折叠与主题卡片 */
+.theme-card { flex-direction: column; align-items: stretch; padding: 0; overflow: visible; }
+.theme-toggle { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 16px; min-height: 56px; cursor: pointer; color: var(--text-primary); font-size: 16px; }
+.theme-toggle:active { background: rgba(255,255,255,.08); }
 .theme-toggle .card-label { flex: 1; }
-.theme-toggle .arrow {
-  color: var(--text-secondary); font-size: 12px;
-  transition: transform .3s var(--ease-soft);
-  will-change: transform;
-}
+.theme-toggle .arrow { color: var(--text-secondary); font-size: 12px; transition: transform .3s; }
 .theme-card.expanded .theme-toggle .arrow { transform: rotate(180deg); }
 
-.theme-body {
-  display: flex;
-  max-height: 0;
-  opacity: 0;
-  overflow: visible;
-  flex-direction: column;
-  gap: 14px;
-  padding: 0 16px;
-  transform: translateY(-6px);
-  transition: max-height .35s var(--ease-soft), opacity .3s var(--ease-soft), padding .35s var(--ease-soft), transform .3s var(--ease-soft);
-  pointer-events: none;
-  position: relative;
-  z-index: 1;
-}
-.theme-card.expanded .theme-body {
-  max-height: 500px;
-  opacity: 1;
-  padding: 12px 16px 16px;
-  transform: translateY(0);
-  pointer-events: auto;
-}
+.theme-body { display: flex; max-height: 0; opacity: 0; flex-direction: column; gap: 14px; padding: 0 16px; transform: translateY(-6px); transition: max-height .35s, opacity .3s, padding .35s, transform .3s; pointer-events: none; }
+.theme-card.expanded .theme-body { max-height: 500px; opacity: 1; padding: 12px 16px 16px; transform: translateY(0); pointer-events: auto; }
 
-.theme-swatches {
-  display: flex; flex-wrap: wrap; gap: 10px;
-}
-.swatch {
-  width: 34px; height: 34px;
-  border-radius: 50%;
-  cursor: pointer;
-  border: 2px solid transparent;
-  position: relative;
-  transition: transform .25s var(--ease-spring), border-color .2s var(--ease-soft), box-shadow .25s var(--ease-soft);
-  will-change: transform;
-}
-.swatch:hover { transform: scale(1.12); }
-.swatch:active { transform: scale(.92); filter: brightness(1.15); box-shadow: 0 0 0 4px rgba(255,255,255,.22); }
+.theme-swatches { display: flex; flex-wrap: wrap; gap: 10px; }
+.swatch { width: 34px; height: 34px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; position: relative; }
+.swatch:active { transform: scale(.92); filter: brightness(1.15); }
 .swatch.active { border-color: #fff; }
-.swatch.active::after {
-  content: ""; position: absolute; inset: 0;
-  border-radius: 50%;
-  box-shadow: 0 0 0 3px rgba(255,255,255,.25);
-}
-.custom-picker {
-  display: flex; align-items: center; gap: 10px;
-  margin-top: 2px;
-}
-.theme-hint {
-  color: var(--text-tertiary);
-  font-size: 12px;
-}
-.btn-palette {
-  display: flex; align-items: center; justify-content: center;
-  width: 34px; height: 34px;
-  border: 2px solid var(--divider);
-  border-radius: 50%;
-  background: var(--card);
-  color: var(--text-primary);
-  font-size: 16px;
-  font-family: inherit;
-  padding: 0;
-  cursor: pointer;
-  transition: transform .25s var(--ease-spring), border-color .2s var(--ease-soft), box-shadow .25s var(--ease-soft), background .2s var(--ease-soft);
-}
-.btn-palette:hover { background: var(--card-hover); border-color: var(--accent-soft); }
-.btn-palette:active { transform: scale(.92); filter: brightness(1.15); border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-ring); }
-.palette-emoji { line-height: 1; font-size: 16px; }
+.custom-picker { display: flex; align-items: center; gap: 10px; margin-top: 2px; }
+.theme-hint { color: var(--text-tertiary); font-size: 12px; }
+.btn-palette { display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border: 2px solid var(--divider); border-radius: 50%; background: var(--card); color: var(--text-primary); font-size: 16px; cursor: pointer; }
+.btn-palette:active { transform: scale(.92); border-color: var(--accent); }
 
-#donate-card .theme-body {
-  pointer-events: none;
-}
-#donate-card.expanded .theme-body {
-  pointer-events: auto;
-}
+#donate-card .theme-body { pointer-events: none; }
+#donate-card.expanded .theme-body { pointer-events: auto; }
 
-/* ============================================================
-   调色盘弹窗
-   ============================================================ */
-.palette-mask {
-  position: fixed; inset: 0; z-index: 1000;
-  display: flex; align-items: center; justify-content: center;
-  background: rgba(0, 0, 0, .55);
-  opacity: 0; pointer-events: none;
-  transition: opacity .25s var(--ease-soft);
-}
+.donate-images { display: flex; gap: 10px; }
+.donate-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.donate-img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; background: #fff; cursor: pointer; }
+.donate-img:active { transform: scale(.96); filter: brightness(1.08); }
+.donate-label { color: var(--text-secondary); font-size: 12px; }
+.donate-greet { color: var(--accent-soft); font-size: 12px; text-align: center; }
+.donate-tip { color: var(--text-tertiary); font-size: 12px; text-align: center; }
+
+/* 调色板 */
+.palette-mask { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, .55); opacity: 0; pointer-events: none; transition: opacity .25s; }
 .palette-mask.open { opacity: 1; pointer-events: auto; }
-
-.palette-dialog {
-  width: 300px; max-width: calc(100vw - 48px);
-  background: var(--bg);
-  border: 1px solid var(--divider);
-  border-radius: 12px;
-  padding: 16px;
-  box-shadow: 0 12px 48px rgba(0, 0, 0, .55);
-  transform: translateY(12px) scale(.96);
-  transition: transform .3s var(--ease-spring);
-  will-change: transform;
-}
+.palette-dialog { width: 300px; max-width: calc(100vw - 48px); background: var(--bg); border: 1px solid var(--divider); border-radius: 12px; padding: 16px; transform: translateY(12px) scale(.96); transition: transform .3s var(--ease-spring); }
 .palette-mask.open .palette-dialog { transform: translateY(0) scale(1); }
-
-.palette-header {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 14px;
-}
+.palette-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
 .palette-title { color: var(--text-primary); font-size: 16px; font-weight: bold; }
 
-.palette-canvas {
-  position: relative;
-  height: 180px;
-  border-radius: 8px;
-  overflow: hidden;
-  border: 1px solid var(--divider);
-  cursor: crosshair;
-  touch-action: none;
-  background-color: #fff;
-}
-.palette-canvas::before {
-  content: ""; position: absolute; inset: 0;
-  pointer-events: none;
-  background-image:
-    linear-gradient(to bottom, #fff, rgba(255,255,255,0)),
-    linear-gradient(to right, rgba(0,0,0,0), #000);
-}
-.palette-canvas::after {
-  content: ""; position: absolute; inset: 0;
-  pointer-events: none;
-  border-radius: 8px;
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,.06);
-}
-.palette-thumb {
-  position: absolute;
-  width: 18px; height: 18px;
-  margin: -9px 0 0 -9px;
-  border-radius: 50%;
-  border: 2px solid #fff;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, .5);
-  pointer-events: none;
-  background: var(--accent);
-}
+.palette-canvas { position: relative; height: 180px; border-radius: 8px; overflow: hidden; border: 1px solid var(--divider); cursor: crosshair; background-color: #fff; }
+.palette-canvas::before { content: ""; position: absolute; inset: 0; pointer-events: none; background-image: linear-gradient(to bottom, #fff, rgba(255,255,255,0)), linear-gradient(to right, rgba(0,0,0,0), #000); }
+.palette-thumb { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; border: 2px solid #fff; background: var(--accent); pointer-events: none; }
 
-.palette-sat-row {
-  display: flex; align-items: center; gap: 10px;
-  margin-top: 14px;
-}
-.palette-sat-label { color: var(--text-tertiary); font-size: 12px; white-space: nowrap; }
-.palette-satbar {
-  position: relative; flex: 1; height: 20px;
-  cursor: pointer; touch-action: none;
-}
-.palette-sat-track {
-  position: absolute; top: 50%; left: 0; right: 0;
-  height: 8px; transform: translateY(-50%);
-  border-radius: 4px;
-  background: linear-gradient(to right, #FF8800, #000);
-}
-.palette-sat-fill {
-  height: 100%; border-radius: 3px;
-}
-.palette-sat-thumb {
-  position: absolute; top: 50%; transform: translate(-50%, -50%);
-  width: 18px; height: 18px; border-radius: 50%;
-  background: #fff;
-  border: 2px solid var(--accent);
-  box-shadow: 0 1px 3px rgba(0,0,0,.4);
-}
+.palette-sat-row { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+.palette-sat-label { color: var(--text-tertiary); font-size: 12px; }
+.palette-satbar { position: relative; flex: 1; height: 20px; cursor: pointer; }
+.palette-sat-track { position: absolute; top: 50%; left: 0; right: 0; height: 8px; transform: translateY(-50%); border-radius: 4px; background: linear-gradient(to right, #FF8800, #000); }
+.palette-sat-fill { height: 100%; border-radius: 3px; }
+.palette-sat-thumb { position: absolute; top: 50%; transform: translate(-50%, -50%); width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 2px solid var(--accent); }
 
-.palette-preview {
-  display: flex; align-items: center; gap: 10px;
-  margin-top: 14px;
-}
+.palette-preview { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
 .palette-preview-label { color: var(--text-tertiary); font-size: 12px; }
-.palette-preview-box {
-  width: 40px; height: 26px;
-  border-radius: 4px;
-  border: 1px solid var(--divider);
-  background: var(--accent);
-  transition: background .15s var(--ease-soft);
-}
-.palette-preview-hex {
-  color: var(--text-primary); font-size: 13px;
-  font-family: ui-monospace, "SF Mono", monospace;
-  letter-spacing: .5px;
-}
-
-.palette-recents {
-  display: flex; flex-wrap: wrap; gap: 8px;
-  margin-top: 14px;
-  min-height: 16px;
-}
-.palette-recents-label {
-  width: 100%; color: var(--text-dim); font-size: 11px;
-}
-.palette-recent {
-  width: 24px; height: 24px; border-radius: 6px;
-  cursor: pointer;
-  border: 2px solid transparent;
-  transition: transform .2s var(--ease-spring), border-color .2s var(--ease-soft);
-}
-.palette-recent:hover { transform: scale(1.15); }
-.palette-recent:active { transform: scale(.9); filter: brightness(1.15); box-shadow: 0 0 0 3px rgba(255,255,255,.22); }
+.palette-preview-box { width: 40px; height: 26px; border-radius: 4px; border: 1px solid var(--divider); background: var(--accent); }
+.palette-preview-hex { color: var(--text-primary); font-size: 13px; font-family: monospace; }
+.palette-recents { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; min-height: 16px; }
+.palette-recents-label { width: 100%; color: var(--text-dim); font-size: 11px; }
+.palette-recent { width: 24px; height: 24px; border-radius: 6px; cursor: pointer; border: 2px solid transparent; }
 .palette-recent.active { border-color: #fff; }
 
-.palette-actions {
-  display: flex; justify-content: flex-end; gap: 10px;
-  margin-top: 16px;
-}
-.btn-palette-cancel {
-  background: var(--card); color: var(--text-primary);
-  border: 1px solid var(--divider);
-  transition: background .2s var(--ease-soft), box-shadow .25s var(--ease-soft);
-}
-.btn-palette-cancel:hover { background: var(--card-hover); }
-.btn-palette-cancel:active { background: var(--card-hover); box-shadow: 0 0 0 4px rgba(255,255,255,.12); }
-.btn-palette-ok {
-  background: var(--accent); color: var(--accent-text);
-  font-weight: bold;
-  transition: background .2s var(--ease-soft), box-shadow .25s var(--ease-soft), filter .2s var(--ease-soft);
-}
-.btn-palette-ok:hover { background: var(--accent-soft); color: var(--accent-text); }
-.btn-palette-ok:active { filter: brightness(1.12); box-shadow: 0 0 0 4px var(--accent-ring); }
+.palette-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+.btn-palette-cancel { background: var(--card); color: var(--text-primary); border: 1px solid var(--divider); }
+.btn-palette-ok { background: var(--accent); color: var(--accent-text); font-weight: bold; }
 
-/* 给作者捐赠 */
-.donate-images {
-  display: flex;
-  gap: 10px;
+/* 触摸屏优化 */
+@media (hover: none) {
+  .pl-item:hover, .pl-del:hover, .btn:hover, .swatch:hover { background: none; }
 }
-.donate-item {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-}
-.donate-img {
-  width: 100%;
-  aspect-ratio: 1;
-  object-fit: cover;
-  border-radius: 8px;
-  background: #fff;
-  cursor: pointer;
-  -webkit-user-select: none;
-  user-select: none;
-  -webkit-touch-callout: none;
-  transition: transform .2s var(--ease-spring), box-shadow .25s var(--ease-soft), filter .2s var(--ease-soft);
-}
-.donate-img:active {
-  transform: scale(.96);
-  filter: brightness(1.08);
-  box-shadow: 0 0 0 4px var(--accent-ring);
-}
-.donate-label {
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-.donate-greet {
-  color: var(--accent-soft);
-  font-size: 12px;
-  text-align: center;
-}
-.donate-tip {
-  color: var(--text-tertiary);
-  font-size: 12px;
-  text-align: center;
+@media (hover: hover) {
+  .pl-item, .btn, .icon-btn, .play-btn, .close-btn, .speed-btn, .swatch { transition: all .15s; }
+  .pl-item:active { opacity: 1; }
 }
 
-/* ============================================================
-   触屏设备
-   ============================================================ */
-@media (hover: none), (pointer: coarse) {
-  .icon-btn:hover,
-  .close-btn:hover,
-  .pl-del:hover,
-  .swatch:hover,
-  .palette-recent:hover,
-  .btn-palette:hover,
-  .btn-palette-cancel:hover,
-  .btn-palette-ok:hover {
-    background: none;
-    border-color: transparent;
-    transform: none;
-  }
-  .pl-item:hover {
-    background: none;
-    transform: none;
-  }
-  .play-btn:hover { box-shadow: none; }
-  .icon-btn, .play-btn, .close-btn, .swatch, .palette-recent,
-  .pl-item, .pl-del, .track-item, .speed-btn,
-  .btn, .btn-palette, .btn-palette-cancel, .btn-palette-ok,
-  .theme-toggle, .donate-toggle, .track-toggle {
-    touch-action: manipulation;
-  }
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .pl-item, .pl-del, .icon-btn, .play-btn, .close-btn, .speed-btn,
-  .btn, .btn-folder, .btn-import, .swatch, .palette-recent,
-  .btn-palette, .btn-palette-cancel, .btn-palette-ok,
-  .theme-toggle, .donate-toggle, .track-toggle, .track-item,
-  .donate-img {
-    transition: background .12s var(--ease-soft),
-                transform .12s var(--ease-spring),
-                box-shadow .12s var(--ease-soft),
-                filter .12s var(--ease-soft),
-                color .12s var(--ease-soft),
-                border-color .12s var(--ease-soft);
-  }
-  .pl-item:active {
-    background: var(--accent-soft);
-    opacity: 1;
-  }
-}
-
-/* ============================================================
-   窄屏适配
-   ============================================================ */
+/* 窄屏适配 */
 @media (max-width: 680px) {
-  .main-root {
-    min-width: 0 !important;
-    width: 100% !important;
-    padding: 12px 8px 16px !important;
-    max-height: 100vh;
-    height: 100vh;
-  }
-  .landscape-columns {
-    flex-direction: column !important;
-    align-items: stretch !important;
-    gap: 12px !important;
-  }
-  .landscape-left {
-    flex: 0 0 auto !important;
-    max-width: none !important;
-    padding-right: 0 !important;
-  }
-  .landscape-right {
-    flex: 0 0 auto !important;
-  }
-  .playlist {
-    max-height: 300px !important;
-  }
+  .main-root { min-width: 0 !important; width: 100% !important; padding: 12px 8px 16px !important; }
+  .landscape-columns { flex-direction: column !important; gap: 12px !important; }
+  .landscape-left, .landscape-right { flex: 0 0 auto !important; max-width: none !important; }
+  .playlist { max-height: 300px !important; }
 }
 
-/* 横屏版调色盘适配 */
-.body-landscape .palette-dialog {
-  width: 400px;
-  max-width: calc(100vw - 48px);
-  padding: 20px;
-}
+.body-landscape .palette-dialog { width: 400px; padding: 20px; }
 .body-landscape .palette-canvas { height: 240px; }
-.body-landscape .palette-sat-row { margin-top: 16px; }
-.body-landscape .palette-sat-track { height: 10px; }
-.body-landscape .palette-sat-thumb { width: 22px; height: 22px; }
-.body-landscape .palette-preview { margin-top: 16px; }
-.body-landscape .palette-preview-box { width: 48px; height: 30px; }
-.body-landscape .palette-recents { margin-top: 16px; }
-.body-landscape .palette-recent { width: 28px; height: 28px; }
-.body-landscape .palette-actions { margin-top: 18px; }
+.body-landscape .float-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 24px; }
+.body-landscape .float-title-row .float-title { flex: 1; min-width: 0; }
+.body-landscape .btn-detect-window { padding: 3px 10px; font-size: 11px; color: var(--folder-blue); background: rgba(255,255,255,.06); border: 1px solid var(--divider-soft); border-radius: 12px; cursor: pointer; }
+.body-landscape .btn-detect-window:active { transform: scale(.9); filter: brightness(1.12); }
+.body-landscape .btn-detect-window.locked { color: var(--accent-bright); border-color: var(--accent-bright); background: rgba(255,255,255,.10); }
+</style>
+</head>
+<body class="app-body body-landscape" tabindex="-1">
 
-.body-landscape .float-title-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-height: 24px;
-}
-.body-landscape .float-title-row .float-title {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-.body-landscape .btn-detect-window {
-  flex: 0 0 auto;
-  padding: 3px 10px;
-  font-size: 11px;
-  line-height: 1.5;
-  color: var(--folder-blue);
-  background: rgba(255,255,255,.06);
-  border: 1px solid var(--divider-soft);
-  border-radius: 12px;
-  cursor: pointer;
-  white-space: nowrap;
-  font-family: inherit;
-  outline: none;
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
-  transition: box-shadow .15s var(--ease-soft), transform .15s var(--ease-spring);
-}
-.body-landscape .btn-detect-window:active {
-  transform: scale(.9);
-  box-shadow: 0 0 0 5px rgba(255,255,255,.18);
-  filter: brightness(1.12);
-  transition: none;
-}
-.body-landscape .btn-detect-window.pressed {
-  transform: scale(.9);
-  box-shadow: 0 0 0 5px rgba(255,255,255,.18);
-  filter: brightness(1.12);
-  transition: none;
-}
-.body-landscape .btn-detect-window.locked {
-  color: var(--accent-bright);
-  border-color: var(--accent-bright);
-  background: rgba(255,255,255,.10);
-}
-</style></head><body class="app-body body-landscape" tabindex="-1">
-
-<!-- ===== 主界面 ===== -->
+<!-- 主界面 -->
 <div id="view-main" class="view active">
   <div class="main-root landscape">
     <div class="main-title">MIDI钢琴播放器</div>
@@ -1036,7 +308,7 @@ body.view-float .view.active, body.view-popup .view.active { background: transpa
               <span class="swatch" data-color="#F5C24C" style="background:#F5C24C" title="金色"></span>
             </div>
             <div class="custom-picker" id="custom-picker">
-              <button class="btn-palette" id="btn-palette" type="button" title="调色盘"><span class="palette-emoji">🎨</span></button>
+              <button class="btn-palette" id="btn-palette" type="button"><span class="palette-emoji">🎨</span></button>
               <span class="theme-hint">自定义颜色</span>
             </div>
           </div>
@@ -1049,11 +321,11 @@ body.view-float .view.active, body.view-popup .view.active { background: transpa
           <div class="theme-body">
             <div class="donate-images">
               <div class="donate-item">
-                <img class="donate-img" src="images/wechat.png" alt="微信支付收款码">
+                <img class="donate-img" src="images/wechat.png" alt="微信支付">
                 <span class="donate-label">微信支付</span>
               </div>
               <div class="donate-item">
-                <img class="donate-img" src="images/alipay.jpg" alt="支付宝收款码">
+                <img class="donate-img" src="images/alipay.jpg" alt="支付宝">
                 <span class="donate-label">支付宝</span>
               </div>
             </div>
@@ -1073,11 +345,12 @@ body.view-float .view.active, body.view-popup .view.active { background: transpa
       </div>
     </div>
   </div>
+  
   <div class="palette-mask" id="palette-mask">
     <div class="palette-dialog" id="palette-dialog">
       <div class="palette-header">
         <div class="palette-title">调色盘</div>
-        <span class="close-btn" id="btn-palette-close" title="关闭">✕</span>
+        <span class="close-btn" id="btn-palette-close">✕</span>
       </div>
       <div class="palette-canvas" id="palette-canvas"></div>
       <div class="palette-sat-row">
@@ -1103,7 +376,7 @@ body.view-float .view.active, body.view-popup .view.active { background: transpa
   </div>
 </div>
 
-<!-- ===== 悬浮窗 ===== -->
+<!-- 悬浮窗 -->
 <div id="view-float" class="view">
   <div class="float-root">
     <div class="grabber" id="float-drag">
@@ -1113,7 +386,7 @@ body.view-float .view.active, body.view-popup .view.active { background: transpa
     <div class="float-title-block">
       <div class="float-title-row">
         <div class="float-title" id="tv-title">未选择乐曲</div>
-        <button class="btn-detect-window" id="btn-detect-window" title="检测并锁定目标窗口">检测窗口</button>
+        <button class="btn-detect-window" id="btn-detect-window">检测窗口</button>
       </div>
       <div class="float-subtitle" id="tv-subtitle">请导入 .mid 文件　空格键 播放，双击重置</div>
       <div class="float-detect-hint" id="detect-hint">播放前请先检测窗口</div>
@@ -1121,9 +394,7 @@ body.view-float .view.active, body.view-popup .view.active { background: transpa
     <div class="seek-row">
       <span class="time-txt" id="tv-current">00:00</span>
       <div class="seekbar" id="seek-bar">
-        <div class="seekbar-track">
-          <div class="seekbar-fill" id="seek-fill" style="width:0%"></div>
-        </div>
+        <div class="seekbar-track"><div class="seekbar-fill" id="seek-fill" style="width:0%"></div></div>
         <div class="seekbar-thumb" id="seek-thumb" style="left:0%"></div>
       </div>
       <span class="time-txt" id="tv-total">00:00</span>
@@ -1132,29 +403,27 @@ body.view-float .view.active, body.view-popup .view.active { background: transpa
       <span class="speed-label">倍速</span>
       <span class="speed-btn" id="btn-speed-minus">−</span>
       <div class="seekbar seek-speed" id="seek-speed">
-        <div class="seekbar-track">
-          <div class="seekbar-fill" id="speed-fill" style="width:48.7%"></div>
-        </div>
+        <div class="seekbar-track"><div class="seekbar-fill" id="speed-fill" style="width:48.7%"></div></div>
         <div class="seekbar-thumb" id="speed-thumb" style="left:48.7%"></div>
       </div>
       <span class="speed-btn" id="btn-speed-plus">+</span>
       <span class="speed-value" id="tv-speed-value">×1.00</span>
     </div>
     <div class="ctrl-row">
-      <span class="icon-btn icon-neu" id="btn-playlist" title="播放列表">
+      <span class="icon-btn icon-neu" id="btn-playlist">
         <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M3,13h2v-2H3V13zM3,17h2v-2H3V17zM3,9h2V7H3V9zM7,13h14v-2H7V13zM7,17h14v-2H7V17zM7,7v2h14V7H7z"/></svg>
       </span>
-      <span class="play-btn" id="btn-play-pause" title="播放/暂停">
+      <span class="play-btn" id="btn-play-pause">
         <svg id="icon-play" viewBox="0 0 24 24" width="22" height="22"><path fill="#FFFFFF" d="M8,5v14l11,-7z"/></svg>
         <svg id="icon-pause" viewBox="0 0 24 24" width="22" height="22" style="display:none"><path fill="#FFFFFF" d="M6,19h4L10,5L6,5v14zM14,5v14h4L18,5h-4z"/></svg>
       </span>
-      <span class="icon-btn" id="btn-reset" title="重置进度">
+      <span class="icon-btn" id="btn-reset">
         <svg viewBox="0 0 24 24" width="20" height="20"><path fill="#FFFFFF" d="M12,5V1L7,6l5,5V7c3.31,0 6,2.69 6,6s-2.69,6 -6,6 -6,-2.69 -6,-6H4c0,4.42 3.58,8 8,8s8,-3.58 8,-8 -3.58,-8 -8,-8z"/></svg>
       </span>
-      <span class="icon-btn icon-neu" id="btn-minimize" title="关闭悬浮窗">
+      <span class="icon-btn icon-neu" id="btn-minimize">
         <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M19,13H5v-2h14v2z"/></svg>
       </span>
-      <span class="close-btn" id="btn-close" title="关闭应用">✕</span>
+      <span class="close-btn" id="btn-close">✕</span>
     </div>
     <div class="track-section">
       <div class="track-toggle" id="btn-track-toggle">音轨 ▼</div>
@@ -1165,15 +434,15 @@ body.view-float .view.active, body.view-popup .view.active { background: transpa
   </div>
 </div>
 
-<!-- ===== 弹出列表 ===== -->
+<!-- 弹出列表 -->
 <div id="view-popup" class="view">
   <div class="popup-root">
     <div class="popup-header">
       <div class="popup-title">播放列表</div>
-      <span class="icon-btn icon-folder" id="btn-popup-import" title="导入">
+      <span class="icon-btn icon-folder" id="btn-popup-import">
         <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M20,6h-8l-2,-2L4,4c-1.1,0 -1.99,0.9 -1.99,2L2,18c0,1.1 0.9,2 2,2h16c1.1,0 2,-0.9 2,-2L22,8c0,-1.1 -0.9,-2 -2,-2zM20,18L4,18L4,6h5.17l2,2L20,8v10z"/></svg>
       </span>
-      <span class="icon-btn icon-neu" id="btn-popup-close" title="关闭">
+      <span class="icon-btn icon-neu" id="btn-popup-close">
         <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M19,13H5v-2h14v2z"/></svg>
       </span>
     </div>
@@ -1182,1147 +451,581 @@ body.view-float .view.active, body.view-popup .view.active { background: transpa
 </div>
 
 <script>
-  (function () {
-    if (window.pywebview && window.pywebview.api && !window.AndroidBridge) {
-      window.AndroidBridge = window.pywebview.api;
+(function () {
+  if (window.pywebview && window.pywebview.api && !window.AndroidBridge) {
+    window.AndroidBridge = window.pywebview.api;
+  }
+})();
+
+(function () {
+  const params = new URLSearchParams(location.search);
+  const viewName = params.get('view') || 'main';
+  let curTotalMs = 0;
+
+  function showToast(text, duration = 2000) {
+    let toast = document.getElementById('__toast__');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = '__toast__';
+      toast.style.cssText = `position:fixed;left:50%;bottom:40px;transform:translateX(-50%) translateY(20px);background:rgba(0,0,0,.85);color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;white-space:pre-line;text-align:center;z-index:9999;opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;max-width:80%;box-shadow:0 4px 16px rgba(0,0,0,.4);`;
+      document.body.appendChild(toast);
     }
-  })();
+    toast.textContent = text;
+    requestAnimationFrame(() => {
+      toast.style.opacity = '1';
+      toast.style.transform = 'translateX(-50%) translateY(0)';
+    });
+    if (toast._timer) clearTimeout(toast._timer);
+    toast._timer = setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateX(-50%) translateY(20px)';
+    }, duration);
+  }
 
-  (function () {
-    const params = new URLSearchParams(location.search);
-    const viewName = params.get('view') || 'main';
+  function show(view) {
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.body.classList.remove('view-float', 'view-popup');
+    if (view === 'float') document.body.classList.add('view-float');
+    if (view === 'popup') document.body.classList.add('view-popup');
+    const el = document.getElementById('view-' + view);
+    if (el) el.classList.add('active');
+  }
+  show(viewName);
 
-    let curTotalMs = 0;
+  document.addEventListener('contextmenu', e => e.preventDefault());
+  document.addEventListener('selectstart', e => e.preventDefault());
+  document.addEventListener('dragstart', e => e.preventDefault());
 
-    // ---------- Toast 提示 ----------
-    function showToast(text, duration = 2000) {
-      let toast = document.getElementById('__toast__');
-      if (!toast) {
-        toast = document.createElement('div');
-        toast.id = '__toast__';
-        toast.style.cssText = `
-          position: fixed;
-          left: 50%;
-          bottom: 40px;
-          transform: translateX(-50%) translateY(20px);
-          background: rgba(0,0,0,.85);
-          color: #fff;
-          padding: 10px 18px;
-          border-radius: 8px;
-          font-size: 13px;
-          line-height: 1.5;
-          white-space: pre-line;
-          text-align: center;
-          z-index: 9999;
-          opacity: 0;
-          pointer-events: none;
-          transition: opacity .25s ease, transform .25s ease;
-          max-width: 80%;
-          box-shadow: 0 4px 16px rgba(0,0,0,.4);
-        `;
-        document.body.appendChild(toast);
-      }
-      toast.textContent = text;
-      requestAnimationFrame(() => {
-        toast.style.opacity = '1';
-        toast.style.transform = 'translateX(-50%) translateY(0)';
+  // 颜色处理
+  const DEFAULT_ACCENT = '#FF8800';
+  const root = document.documentElement;
+
+  function hexToHsl(hex) {
+    if (!hex || !hex.startsWith('#')) hex = DEFAULT_ACCENT;
+    let r = parseInt(hex.slice(1, 3), 16) / 255;
+    let g = parseInt(hex.slice(3, 5), 16) / 255;
+    let b = parseInt(hex.slice(5, 7), 16) / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h = 0, s = 0, l = (max + min) / 2;
+    if (max !== min) {
+      const d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      if (max === r) h = ((g - b) / d + (g < b ? 6 : 0));
+      else if (max === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h *= 60;
+    }
+    return { h: Math.round(h), s: Math.round(s * 100), l: Math.round(l * 100) };
+  }
+
+  function hslToHex(h, s, l) {
+    h = ((h % 360) + 360) % 360; s = Math.max(0, Math.min(100, s)) / 100; l = Math.max(0, Math.min(100, l)) / 100;
+    const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = l - c / 2;
+    let r = 0, g = 0, b = 0;
+    if (h < 60) { r = c; g = x; } else if (h < 120) { r = x; g = c; } else if (h < 180) { g = c; b = x; } else if (h < 240) { g = x; b = c; } else if (h < 300) { r = x; b = c; } else { r = c; b = x; }
+    const to = v => Math.round((v + m) * 255).toString(16).padStart(2, '0');
+    return '#' + to(r) + to(g) + to(b);
+  }
+
+  function hsvToHex(h, s, v) {
+    h = ((h % 360) + 360) % 360; s = Math.max(0, Math.min(100, s)) / 100; v = Math.max(0, Math.min(100, v)) / 100;
+    const c = v * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = v - c;
+    let r = 0, g = 0, b = 0;
+    if (h < 60) { r = c; g = x; } else if (h < 120) { r = x; g = c; } else if (h < 180) { g = c; b = x; } else if (h < 240) { g = x; b = c; } else if (h < 300) { r = x; b = c; } else { r = c; b = x; }
+    const to = v => Math.round((v + m) * 255).toString(16).padStart(2, '0');
+    return '#' + to(r) + to(g) + to(b);
+  }
+
+  function hexToHsv(hex) {
+    const r = parseInt(hex.slice(1, 3), 16) / 255, g = parseInt(hex.slice(3, 5), 16) / 255, b = parseInt(hex.slice(5, 7), 16) / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+    let h = 0;
+    if (d !== 0) {
+      if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)); else if (max === g) h = (b - r) / d + 2; else h = (r - g) / d + 4;
+      h *= 60;
+    }
+    return { h: Math.round(h), s: Math.round((max === 0 ? 0 : d / max) * 100), v: Math.round(max * 100) };
+  }
+
+  function applyAccent(hex) {
+    if (!hex || !hex.startsWith('#')) hex = DEFAULT_ACCENT;
+    const { h, s, l } = hexToHsl(hex);
+    root.style.setProperty('--accent', hex);
+    root.style.setProperty('--accent-soft', hslToHex(h, Math.max(30, s - 8), Math.min(88, l + 28)));
+    root.style.setProperty('--accent-softest', hslToHex(h, Math.max(22, s - 14), Math.min(94, l + 44)));
+    root.style.setProperty('--accent-bright', hslToHex(h, s, Math.min(78, l + 8)));
+    root.style.setProperty('--accent-grad-end', hslToHex(h, Math.max(25, s - 12), Math.min(92, l + 34)));
+    root.style.setProperty('--accent-text', l > 60 ? '#1a1c2e' : '#FFFFFF');
+    root.style.setProperty('--accent-ring', hex + '47');
+    root.style.setProperty('--scrollbar-thumb', hex);
+    root.style.setProperty('--bg', hslToHex(h, Math.max(18, Math.min(35, s * 0.4)), Math.max(10, Math.min(16, l * 0.25))));
+    root.style.setProperty('--float-bg', '#' + hslToHex(h, Math.max(20, Math.min(40, s * 0.45)), Math.max(12, Math.min(20, l * 0.3))).slice(1) + 'E6');
+    root.style.setProperty('--bg-deep', hslToHex(h, Math.max(20, s * 0.5), Math.max(5, l * 0.14)));
+    root.style.setProperty('--card', hslToHex(h, Math.max(16, s * 0.35), Math.max(12, l * 0.3)));
+    root.style.setProperty('--card-hover', hslToHex(h, Math.max(18, s * 0.4), Math.max(14, l * 0.36)));
+    root.style.setProperty('--divider', hslToHex(h, Math.max(14, s * 0.3), Math.max(18, l * 0.45)));
+    root.style.setProperty('--divider-soft', hslToHex(h, Math.max(14, s * 0.3), Math.max(13, l * 0.32)));
+    root.style.setProperty('--track-bg', hslToHex(h, Math.max(10, s * 0.25), Math.max(20, l * 0.5)));
+    root.style.setProperty('--thumb-bg', hslToHex(h, Math.max(8, s * 0.2), Math.max(34, l * 0.75)));
+    root.style.setProperty('--track-inactive', hslToHex(h, Math.max(8, s * 0.2), Math.max(40, l * 0.85)));
+    root.style.setProperty('--text-secondary', hslToHex(h, Math.max(10, s * 0.3), Math.max(60, Math.min(78, l * 1.6))));
+    root.style.setProperty('--text-tertiary', hslToHex(h, Math.max(8, s * 0.25), Math.max(55, Math.min(72, l * 1.5))));
+    root.style.setProperty('--text-dim', hslToHex(h, Math.max(8, s * 0.2), Math.max(38, Math.min(50, l * 1.1))));
+    root.style.setProperty('--folder-blue', hslToHex(h, Math.max(60, s), Math.min(85, l + 40)));
+  }
+
+  // 主题色
+  const swatchContainer = document.getElementById('theme-swatches');
+  if (swatchContainer) {
+    const swatches = swatchContainer.querySelectorAll('.swatch');
+    swatches.forEach(sw => {
+      sw.addEventListener('click', () => {
+        swatches.forEach(s => s.classList.remove('active'));
+        sw.classList.add('active');
+        applyAccent(sw.dataset.color);
+        window.AndroidBridge?.onThemeChanged(sw.dataset.color);
       });
-      if (toast._timer) clearTimeout(toast._timer);
-      toast._timer = setTimeout(() => {
-        toast.style.opacity = '0';
-        toast.style.transform = 'translateX(-50%) translateY(20px)';
-      }, duration);
+    });
+    
+    const themeCard = document.getElementById('theme-card');
+    const themeToggle = document.getElementById('theme-toggle');
+    themeToggle.addEventListener('click', () => {
+      const exp = themeCard.classList.toggle('expanded');
+      themeToggle.querySelector('.arrow').textContent = exp ? '▲' : '▼';
+    });
+    
+    if (window.AndroidBridge?.getThemeColor) {
+      window.AndroidBridge.getThemeColor().then(saved => {
+        applyAccent(saved || DEFAULT_ACCENT);
+        swatches.forEach(sw => { if (sw.dataset.color === saved) sw.classList.add('active'); });
+      }).catch(() => applyAccent(DEFAULT_ACCENT));
+    } else {
+      applyAccent(DEFAULT_ACCENT);
     }
+  }
 
-    function show(view) {
-      document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-      if (view === 'all') {
-        document.body.classList.add('preview-all');
-        document.querySelectorAll('.view').forEach(v => v.classList.add('active'));
-        return;
+  if (window.electronAPI) {
+    window.electronAPI.onThemeChanged(color => {
+      if (color && color.startsWith('#')) {
+        applyAccent(color);
+        document.querySelectorAll('.swatch').forEach(sw => { if (sw.dataset.color === color) sw.classList.add('active'); });
       }
-      document.body.classList.remove('preview-all');
-      document.body.classList.remove('view-float', 'view-popup');
-      if (view === 'float') document.body.classList.add('view-float');
-      if (view === 'popup') document.body.classList.add('view-popup');
-      const el = document.getElementById('view-' + view);
-      if (el) el.classList.add('active');
+    });
+  }
+
+  // 调色盘
+  (function initPalette() {
+    const mask = document.getElementById('palette-mask');
+    const canvas = document.getElementById('palette-canvas');
+    const btnPalette = document.getElementById('btn-palette');
+    const btnClose = document.getElementById('btn-palette-close');
+    const btnCancel = document.getElementById('btn-palette-cancel');
+    const btnOk = document.getElementById('btn-palette-ok');
+    const previewBox = document.getElementById('palette-preview-box');
+    const previewHex = document.getElementById('palette-preview-hex');
+    const recentsCont = document.getElementById('palette-recents');
+    const satbar = document.getElementById('palette-satbar');
+    const satThumb = document.getElementById('palette-sat-thumb');
+    const satFill = document.getElementById('palette-sat-fill');
+    if (!mask || !canvas) return;
+
+    const PRESET_COLORS = ['#FF8800', '#FF5722', '#F44336', '#E91E63', '#9C27B0', '#673AB7', '#3F51B5', '#4C8BF5', '#2196F3', '#03A9F4', '#00BCD4', '#009688', '#3ECF8E', '#4CAF50', '#8BC34A', '#CDDC39', '#FFEB3B', '#F5C24C', '#FF9800', '#795548', '#9E9E9E', '#607D8B', '#B072F5', '#FF6B81'];
+    const recentColors = [];
+    let currentColor = DEFAULT_ACCENT, curH = 0, curS = 100, curV = 100, lastCommitted = DEFAULT_ACCENT;
+
+    const thumb = document.createElement('div');
+    thumb.className = 'palette-thumb';
+    canvas.appendChild(thumb);
+    const satTrack = document.getElementById('palette-sat-track');
+
+    function buildHueGradient() {
+      const stops = [];
+      for (let i = 0; i <= 12; i++) stops.push(hsvToHex(Math.round(i / 12 * 360), 100, 100) + ' ' + (i / 12 * 100) + '%');
+      return 'linear-gradient(to right, ' + stops.join(', ') + ')';
     }
-    show(viewName);
+    function renderCanvasHue() { canvas.style.backgroundImage = buildHueGradient(); }
+    function renderSatTrack() { if (satTrack) satTrack.style.background = 'linear-gradient(to right, ' + hsvToHex(curH, 100, 100) + ', #000)'; }
+    function updatePreview(c) { previewBox.style.background = c; previewHex.textContent = c.toUpperCase(); }
+    function setCurrent(c) { currentColor = c; updatePreview(c); }
 
-    document.addEventListener('contextmenu', e => e.preventDefault());
-    document.addEventListener('selectstart', e => e.preventDefault());
-    document.addEventListener('dragstart', e => e.preventDefault());
+    function placeThumb(c) {
+      const { h, s, v } = hexToHsv(c);
+      curH = h; curS = s; curV = v;
+      const rect = canvas.getBoundingClientRect();
+      thumb.style.left = (h / 360) * rect.width + 'px';
+      thumb.style.top = (s / 100) * rect.height + 'px';
+      thumb.style.background = c;
+      updateSatUI();
+      renderSatTrack();
+    }
 
-    (function initTouchFeedback() {
-      const release = () => {
-        const el = document.activeElement;
-        if (el && el.blur && el !== document.body && el.tagName !== 'INPUT') {
-          el.blur();
-        }
-        void document.body.offsetHeight;
+    function updateSatUI() { if (satThumb) satThumb.style.left = curV + '%'; if (satFill) satFill.style.width = curV + '%'; }
+    function refreshColor() { const c = hsvToHex(curH, curS, curV); setCurrent(c); thumb.style.background = c; renderSatTrack(); }
+
+    function pick(e) {
+      const rect = canvas.getBoundingClientRect();
+      const cx = e.touches ? e.touches[0].clientX : e.clientX;
+      const cy = e.touches ? e.touches[0].clientY : e.clientY;
+      const px = Math.max(0, Math.min(1, (cx - rect.left) / rect.width));
+      const py = Math.max(0, Math.min(1, (cy - rect.top) / rect.height));
+      curH = Math.round(px * 360); curS = Math.round(py * 100);
+      thumb.style.left = px * rect.width + 'px';
+      thumb.style.top = py * rect.height + 'px';
+      refreshColor();
+    }
+
+    canvas.addEventListener('mousedown', e => {
+      pick(e);
+      const move = ev => pick(ev), up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); };
+      document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
+    });
+    canvas.addEventListener('touchstart', e => { e.preventDefault(); pick(e); }, { passive: false });
+    canvas.addEventListener('touchmove', e => { e.preventDefault(); pick(e); }, { passive: false });
+
+    (function bindSatDrag() {
+      if (!satbar) return;
+      let dragging = false;
+      const apply = r => { curV = Math.round(r * 100); updateSatUI(); refreshColor(); };
+      const ratio = e => {
+        const rect = satbar.getBoundingClientRect();
+        const cx = e.touches && e.touches.length ? e.touches[0].clientX : e.clientX;
+        return Math.max(0, Math.min(1, (cx - rect.left) / rect.width));
       };
-      if ('ontouchstart' in window) {
-        document.addEventListener('touchend', release, { passive: true });
-        document.addEventListener('touchcancel', release, { passive: true });
-      }
-      document.addEventListener('mouseup', release, { passive: true });
+      const start = e => { dragging = true; apply(ratio(e)); if (e.cancelable) e.preventDefault(); };
+      const move = e => { if (!dragging) return; if (e.cancelable) e.preventDefault(); apply(ratio(e)); };
+      const end = () => dragging = false;
+      satbar.addEventListener('mousedown', start); satbar.addEventListener('touchstart', start, { passive: false });
+      satbar.addEventListener('mousemove', move); satbar.addEventListener('touchmove', move, { passive: false });
+      document.addEventListener('mouseup', end); document.addEventListener('touchend', end); document.addEventListener('touchcancel', end);
     })();
 
-    // ---------- 主题色 ----------
-    const DEFAULT_ACCENT = '#FF8800';
-    const root = document.documentElement;
-
-    function hexToHsl(hex) {
-      if (!hex || typeof hex !== 'string' || !hex.startsWith('#')) hex = DEFAULT_ACCENT;
-      let r = parseInt(hex.slice(1, 3), 16) / 255;
-      let g = parseInt(hex.slice(3, 5), 16) / 255;
-      let b = parseInt(hex.slice(5, 7), 16) / 255;
-      const max = Math.max(r, g, b), min = Math.min(r, g, b);
-      let h = 0, s = 0, l = (max + min) / 2;
-      if (max !== min) {
-        const d = max - min;
-        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-        if (max === r) h = ((g - b) / d + (g < b ? 6 : 0));
-        else if (max === g) h = (b - r) / d + 2;
-        else h = (r - g) / d + 4;
-        h *= 60;
-      }
-      return { h: Math.round(h), s: Math.round(s * 100), l: Math.round(l * 100) };
-    }
-    function hslToHex(h, s, l) {
-      h = ((h % 360) + 360) % 360;
-      s = Math.max(0, Math.min(100, s)) / 100;
-      l = Math.max(0, Math.min(100, l)) / 100;
-      const c = (1 - Math.abs(2 * l - 1)) * s;
-      const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
-      const m = l - c / 2;
-      let r = 0, g = 0, b = 0;
-      if (h < 60) { r = c; g = x; }
-      else if (h < 120) { r = x; g = c; }
-      else if (h < 180) { g = c; b = x; }
-      else if (h < 240) { g = x; b = c; }
-      else if (h < 300) { r = x; b = c; }
-      else { r = c; b = x; }
-      const to = v => Math.round((v + m) * 255).toString(16).padStart(2, '0');
-      return '#' + to(r) + to(g) + to(b);
-    }
-    function hsvToHex(h, s, v) {
-      h = ((h % 360) + 360) % 360;
-      s = Math.max(0, Math.min(100, s)) / 100;
-      v = Math.max(0, Math.min(100, v)) / 100;
-      const c = v * s;
-      const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
-      const m = v - c;
-      let r = 0, g = 0, b = 0;
-      if (h < 60) { r = c; g = x; }
-      else if (h < 120) { r = x; g = c; }
-      else if (h < 180) { g = c; b = x; }
-      else if (h < 240) { g = x; b = c; }
-      else if (h < 300) { r = x; b = c; }
-      else { r = c; b = x; }
-      const to = v => Math.round((v + m) * 255).toString(16).padStart(2, '0');
-      return '#' + to(r) + to(g) + to(b);
-    }
-    function hexToHsv(hex) {
-      const r = parseInt(hex.slice(1, 3), 16) / 255;
-      const g = parseInt(hex.slice(3, 5), 16) / 255;
-      const b = parseInt(hex.slice(5, 7), 16) / 255;
-      const max = Math.max(r, g, b), min = Math.min(r, g, b);
-      const d = max - min;
-      let h = 0;
-      if (d !== 0) {
-        if (max === r) h = ((g - b) / d + (g < b ? 6 : 0));
-        else if (max === g) h = (b - r) / d + 2;
-        else h = (r - g) / d + 4;
-        h *= 60;
-      }
-      const s = max === 0 ? 0 : d / max;
-      return { h: Math.round(h), s: Math.round(s * 100), v: Math.round(max * 100) };
-    }
-    function contrastText(hex) {
-      return hexToHsl(hex).l > 60 ? '#1a1c2e' : '#FFFFFF';
-    }
-    function deriveBg(hex) {
-      const { h, s, l } = hexToHsl(hex);
-      const bgSat = Math.max(18, Math.min(35, s * 0.4));
-      const bgLight = Math.max(10, Math.min(16, l * 0.25));
-      return hslToHex(h, bgSat, bgLight);
-    }
-    function deriveFloatBg(hex) {
-      const { h, s, l } = hexToHsl(hex);
-      const fSat = Math.max(20, Math.min(40, s * 0.45));
-      const fLight = Math.max(12, Math.min(20, l * 0.3));
-      return '#' + hslToHex(h, fSat, fLight).slice(1) + 'E6';
-    }
-
-    function applyAccent(hex) {
-      if (!hex || typeof hex !== 'string' || !hex.startsWith('#')) hex = DEFAULT_ACCENT;
-      const { h, s, l } = hexToHsl(hex);
-      const soft = hslToHex(h, Math.max(30, s - 8), Math.min(88, l + 28));
-      const softest = hslToHex(h, Math.max(22, s - 14), Math.min(94, l + 44));
-      const bright = hslToHex(h, s, Math.min(78, l + 8));
-      const gradEnd = hslToHex(h, Math.max(25, s - 12), Math.min(92, l + 34));
-      root.style.setProperty('--accent', hex);
-      root.style.setProperty('--accent-soft', soft);
-      root.style.setProperty('--accent-softest', softest);
-      root.style.setProperty('--accent-bright', bright);
-      root.style.setProperty('--accent-grad-end', gradEnd);
-      root.style.setProperty('--accent-text', contrastText(hex));
-      root.style.setProperty('--accent-ring', hex + '47');
-      root.style.setProperty('--scrollbar-thumb', hex);
-      root.style.setProperty('--scrollbar-track', 'rgba(255,255,255,0.06)');
-      const bg = deriveBg(hex);
-      root.style.setProperty('--bg', bg);
-      root.style.setProperty('--float-bg', deriveFloatBg(hex));
-      root.style.setProperty('--bg-deep', hslToHex(h, Math.max(20, s * 0.5), Math.max(5, l * 0.14)));
-      root.style.setProperty('--card', hslToHex(h, Math.max(16, s * 0.35), Math.max(12, l * 0.3)));
-      root.style.setProperty('--card-hover', hslToHex(h, Math.max(18, s * 0.4), Math.max(14, l * 0.36)));
-      root.style.setProperty('--divider', hslToHex(h, Math.max(14, s * 0.3), Math.max(18, l * 0.45)));
-      root.style.setProperty('--divider-soft', hslToHex(h, Math.max(14, s * 0.3), Math.max(13, l * 0.32)));
-      root.style.setProperty('--track-bg', hslToHex(h, Math.max(10, s * 0.25), Math.max(20, l * 0.5)));
-      root.style.setProperty('--thumb-bg', hslToHex(h, Math.max(8, s * 0.2), Math.max(34, l * 0.75)));
-      root.style.setProperty('--track-inactive', hslToHex(h, Math.max(8, s * 0.2), Math.max(40, l * 0.85)));
-      root.style.setProperty('--text-secondary', hslToHex(h, Math.max(10, s * 0.3), Math.max(60, Math.min(78, l * 1.6))));
-      root.style.setProperty('--text-tertiary', hslToHex(h, Math.max(8, s * 0.25), Math.max(55, Math.min(72, l * 1.5))));
-      root.style.setProperty('--text-dim', hslToHex(h, Math.max(8, s * 0.2), Math.max(38, Math.min(50, l * 1.1))));
-      root.style.setProperty('--folder-blue', hslToHex(h, Math.max(60, s), Math.min(85, l + 40)));
-    }
-
-    function markActiveSwatch(el) {
-      document.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
-      if (el) el.classList.add('active');
-    }
-
-    const swatchContainer = document.getElementById('theme-swatches');
-    if (swatchContainer) {
-      const swatches = swatchContainer.querySelectorAll('.swatch');
-      swatches.forEach(sw => { if (sw.dataset.color) sw.style.background = sw.dataset.color; });
-      swatches.forEach(sw => {
-        sw.addEventListener('click', () => {
-          markActiveSwatch(sw);
-          const color = sw.dataset.color;
-          applyAccent(color);
-          if (window.AndroidBridge && window.AndroidBridge.onThemeChanged) {
-            window.AndroidBridge.onThemeChanged(color);
-          }
-        });
+    function renderColorBoard() {
+      recentsCont.innerHTML = '';
+      const p = document.createElement('div'); p.className = 'palette-recents-label'; p.textContent = '预设颜色'; recentsCont.appendChild(p);
+      PRESET_COLORS.forEach(c => {
+        const el = document.createElement('span'); el.className = 'palette-recent'; el.style.background = c;
+        el.addEventListener('click', () => { setCurrent(c); placeThumb(c); recentsCont.querySelectorAll('.palette-recent').forEach(r => r.classList.remove('active')); el.classList.add('active'); });
+        recentsCont.appendChild(el);
       });
-      const themeCard = document.getElementById('theme-card');
-      const themeToggle = document.getElementById('theme-toggle');
-      const themeArrow = themeToggle.querySelector('.arrow');
-      themeToggle.addEventListener('click', () => {
-        const expanded = themeCard.classList.toggle('expanded');
-        themeArrow.textContent = expanded ? '▲' : '▼';
-      });
-      if (window.AndroidBridge && window.AndroidBridge.getThemeColor) {
-        window.AndroidBridge.getThemeColor().then(saved => {
-          if (saved) {
-            applyAccent(saved);
-            swatches.forEach(sw => {
-              if (sw.dataset.color === saved) markActiveSwatch(sw);
-            });
-          } else {
-            applyAccent(DEFAULT_ACCENT);
-          }
-        }).catch(() => applyAccent(DEFAULT_ACCENT));
-      } else {
-        applyAccent(DEFAULT_ACCENT);
-      }
-    }
-
-    if (window.electronAPI) {
-      window.electronAPI.onThemeChanged((color) => {
-        if (color && typeof color === 'string' && color.startsWith('#') && typeof applyAccent === 'function') {
-          applyAccent(color);
-          document.querySelectorAll('.swatch').forEach(sw => {
-            if (sw.dataset.color === color) markActiveSwatch(sw);
-          });
-        }
-      });
-    }
-
-    // ---------- 调色盘 ----------
-    (function initPalette() {
-      const mask = document.getElementById('palette-mask');
-      const canvas = document.getElementById('palette-canvas');
-      const btnPalette = document.getElementById('btn-palette');
-      const btnClose = document.getElementById('btn-palette-close');
-      const btnCancel = document.getElementById('btn-palette-cancel');
-      const btnOk = document.getElementById('btn-palette-ok');
-      const previewBox = document.getElementById('palette-preview-box');
-      const previewHex = document.getElementById('palette-preview-hex');
-      const recentsCont = document.getElementById('palette-recents');
-      const satbar = document.getElementById('palette-satbar');
-      const satThumb = document.getElementById('palette-sat-thumb');
-      const satFill = document.getElementById('palette-sat-fill');
-      if (!mask || !canvas) return;
-
-      const PRESET_COLORS = [
-        '#FF8800', '#FF5722', '#F44336', '#E91E63', '#9C27B0', '#673AB7',
-        '#3F51B5', '#4C8BF5', '#2196F3', '#03A9F4', '#00BCD4', '#009688',
-        '#3ECF8E', '#4CAF50', '#8BC34A', '#CDDC39', '#FFEB3B', '#F5C24C',
-        '#FF9800', '#795548', '#9E9E9E', '#607D8B', '#B072F5', '#FF6B81'
-      ];
-      const recentColors = [];
-
-      let currentColor = DEFAULT_ACCENT;
-      let curH = 0, curS = 100, curV = 100;
-      let lastCommitted = DEFAULT_ACCENT;
-
-      const thumb = document.createElement('div');
-      thumb.className = 'palette-thumb';
-      canvas.appendChild(thumb);
-
-      const satTrack = document.getElementById('palette-sat-track');
-
-      function buildHueGradient() {
-        const stops = [];
-        for (let i = 0; i <= 12; i++) {
-          const h = Math.round(i / 12 * 360);
-          stops.push(hsvToHex(h, 100, 100) + ' ' + (i / 12 * 100) + '%');
-        }
-        return 'linear-gradient(to right, ' + stops.join(', ') + ')';
-      }
-      function renderCanvasHue() {
-        canvas.style.backgroundImage = buildHueGradient();
-      }
-      function renderSatTrack() {
-        if (!satTrack) return;
-        const pure = hsvToHex(curH, 100, 100);
-        satTrack.style.background = 'linear-gradient(to right, ' + pure + ', #000)';
-      }
-
-      function updatePreview(color) {
-        previewBox.style.background = color;
-        previewHex.textContent = color.toUpperCase();
-      }
-      function setCurrent(color) {
-        currentColor = color;
-        updatePreview(color);
-      }
-
-      function placeThumb(color) {
-        const { h, s, v } = hexToHsv(color);
-        curH = h; curS = s; curV = v;
-        const rect = canvas.getBoundingClientRect();
-        const x = (h / 360) * rect.width;
-        const y = (s / 100) * rect.height;
-        thumb.style.left = x + 'px';
-        thumb.style.top = y + 'px';
-        thumb.style.background = color;
-        updateSatUI();
-        renderSatTrack();
-      }
-
-      function updateSatUI() {
-        const pct = curV + '%';
-        if (satThumb) satThumb.style.left = pct;
-        if (satFill) satFill.style.width = pct;
-      }
-
-      function refreshColor() {
-        const color = hsvToHex(curH, curS, curV);
-        setCurrent(color);
-        thumb.style.background = color;
-        renderSatTrack();
-      }
-
-      function pick(e) {
-        const rect = canvas.getBoundingClientRect();
-        const cx = e.touches ? e.touches[0].clientX : e.clientX;
-        const cy = e.touches ? e.touches[0].clientY : e.clientY;
-        const px = Math.max(0, Math.min(1, (cx - rect.left) / rect.width));
-        const py = Math.max(0, Math.min(1, (cy - rect.top) / rect.height));
-        curH = Math.round(px * 360);
-        curS = Math.round(py * 100);
-        const x = px * rect.width, y = py * rect.height;
-        thumb.style.left = x + 'px';
-        thumb.style.top = y + 'px';
-        refreshColor();
-      }
-
-      canvas.addEventListener('mousedown', e => {
-        pick(e);
-        const move = ev => pick(ev);
-        const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); };
-        document.addEventListener('mousemove', move);
-        document.addEventListener('mouseup', up);
-      });
-      canvas.addEventListener('touchstart', e => { e.preventDefault(); pick(e); }, { passive: false });
-      canvas.addEventListener('touchmove', e => { e.preventDefault(); pick(e); }, { passive: false });
-
-      function bindSatDrag() {
-        if (!satbar) return;
-        let dragging = false;
-        const ratioFromEvent = (e) => {
-          const rect = satbar.getBoundingClientRect();
-          const cx = e.touches && e.touches.length ? e.touches[0].clientX : e.clientX;
-          let r = (cx - rect.left) / rect.width;
-          if (r < 0) r = 0;
-          if (r > 1) r = 1;
-          return r;
-        };
-        const apply = (r) => {
-          curV = Math.round(r * 100);
-          updateSatUI();
-          refreshColor();
-        };
-        const start = (e) => {
-          dragging = true;
-          apply(ratioFromEvent(e));
-          if (e.cancelable) e.preventDefault();
-        };
-        const move = (e) => {
-          if (!dragging) return;
-          if (e.cancelable) e.preventDefault();
-          apply(ratioFromEvent(e));
-        };
-        const end = () => { dragging = false; };
-        satbar.addEventListener('mousedown', start);
-        satbar.addEventListener('touchstart', start, { passive: false });
-        satbar.addEventListener('mousemove', move);
-        satbar.addEventListener('touchmove', move, { passive: false });
-        document.addEventListener('mouseup', end);
-        document.addEventListener('touchend', end);
-        document.addEventListener('touchcancel', end);
-      }
-      bindSatDrag();
-
-      function renderColorBoard() {
-        recentsCont.innerHTML = '';
-        const presetLabel = document.createElement('div');
-        presetLabel.className = 'palette-recents-label';
-        presetLabel.textContent = '预设颜色';
-        recentsCont.appendChild(presetLabel);
-        PRESET_COLORS.forEach(c => {
-          const el = document.createElement('span');
-          el.className = 'palette-recent preset';
-          el.style.background = c;
-          el.title = c;
-          el.addEventListener('click', () => {
-            setCurrent(c);
-            placeThumb(c);
-            recentsCont.querySelectorAll('.palette-recent').forEach(r => r.classList.remove('active'));
-            el.classList.add('active');
-          });
+      if (recentColors.length > 0) {
+        const rl = document.createElement('div'); rl.className = 'palette-recents-label'; rl.textContent = '最近使用'; recentsCont.appendChild(rl);
+        recentColors.forEach(c => {
+          const el = document.createElement('span'); el.className = 'palette-recent'; el.style.background = c;
+          el.addEventListener('click', () => { setCurrent(c); placeThumb(c); recentsCont.querySelectorAll('.palette-recent').forEach(r => r.classList.remove('active')); el.classList.add('active'); });
           recentsCont.appendChild(el);
         });
-        if (recentColors.length > 0) {
-          const recentLabel = document.createElement('div');
-          recentLabel.className = 'palette-recents-label';
-          recentLabel.textContent = '最近使用';
-          recentsCont.appendChild(recentLabel);
-          recentColors.forEach(c => {
-            const el = document.createElement('span');
-            el.className = 'palette-recent recent';
-            el.style.background = c;
-            el.title = c;
-            el.addEventListener('click', () => {
-              setCurrent(c);
-              placeThumb(c);
-              recentsCont.querySelectorAll('.palette-recent').forEach(r => r.classList.remove('active'));
-              el.classList.add('active');
-            });
-            recentsCont.appendChild(el);
-          });
-        }
-      }
-
-      function open() {
-        lastCommitted = currentColor;
-        setCurrent(lastCommitted);
-        renderCanvasHue();
-        renderColorBoard();
-        requestAnimationFrame(() => {
-          placeThumb(lastCommitted);
-          renderSatTrack();
-        });
-        mask.classList.add('open');
-      }
-      function commit() {
-        const color = currentColor;
-        applyAccent(color);
-        markActiveSwatch(null);
-        document.querySelectorAll('.swatch').forEach(sw => {
-          if (sw.dataset.color === color) markActiveSwatch(sw);
-        });
-        if (!recentColors.includes(color)) {
-          recentColors.unshift(color);
-          if (recentColors.length > 8) recentColors.pop();
-        }
-        if (window.AndroidBridge && window.AndroidBridge.onThemeChanged) {
-          window.AndroidBridge.onThemeChanged(color);
-        }
-        mask.classList.remove('open');
-      }
-      function cancel() {
-        setCurrent(lastCommitted);
-        requestAnimationFrame(() => placeThumb(lastCommitted));
-        mask.classList.remove('open');
-      }
-
-      if (btnPalette) btnPalette.addEventListener('click', open);
-      if (btnClose) btnClose.addEventListener('click', cancel);
-      if (btnCancel) btnCancel.addEventListener('click', cancel);
-      if (btnOk) btnOk.addEventListener('click', commit);
-      mask.addEventListener('click', e => { if (e.target === mask) cancel(); });
-    })();
-
-    // ---------- 捐赠 ----------
-    const donateCard = document.getElementById('donate-card');
-    const donateToggle = document.getElementById('donate-toggle');
-    if (donateCard && donateToggle) {
-      const donateArrow = donateToggle.querySelector('.arrow');
-      donateToggle.addEventListener('click', () => {
-        const expanded = donateCard.classList.toggle('expanded');
-        donateArrow.textContent = expanded ? '▲' : '▼';
-      });
-    }
-
-    // ---------- 捐赠图片长按保存 ----------
-    document.querySelectorAll('.donate-img').forEach(img => {
-      let longPressTimer = null;
-      let isLongPress = false;
-      
-      function saveImage() {
-        if (isLongPress) return;
-        isLongPress = true;
-        const src = img.getAttribute('src');
-        
-        let promise;
-        if (window.AndroidBridge && window.AndroidBridge.onSaveImage) {
-          promise = window.AndroidBridge.onSaveImage(src);
-        } else if (window.electronAPI && window.electronAPI.sendSaveImage) {
-          promise = window.electronAPI.sendSaveImage(src);
-        }
-        
-        if (promise && typeof promise.then === 'function') {
-          promise.then(result => {
-            if (result && result.success) {
-              showToast('已保存到下载目录：' + (result.name || ''));
-            } else {
-              showToast('保存失败: ' + ((result && result.error) || '未知错误'));
-            }
-          }).catch(err => {
-            showToast('保存失败: ' + err.message);
-          });
-        }
-        
-        setTimeout(() => { isLongPress = false; }, 800);
-      }
-      
-      img.addEventListener('mousedown', function(e) {
-        if (e.button !== 0) return;
-        isLongPress = false;
-        longPressTimer = setTimeout(function() { longPressTimer = null; saveImage(); }, 500);
-      });
-      img.addEventListener('mouseup', function(e) {
-        if (e.button !== 0) return;
-        if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-      });
-      img.addEventListener('mouseleave', function() {
-        if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-      });
-      img.addEventListener('touchstart', function(e) {
-        isLongPress = false;
-        longPressTimer = setTimeout(function() { longPressTimer = null; saveImage(); }, 500);
-      }, { passive: true });
-      img.addEventListener('touchend', function() {
-        if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-      }, { passive: true });
-      img.addEventListener('touchmove', function() {
-        if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-      }, { passive: true });
-      img.addEventListener('contextmenu', function(e) { e.preventDefault(); });
-    });
-
-    // ---------- 主界面事件 ----------
-    const swOverlay = document.getElementById('sw-overlay');
-    if (swOverlay) {
-      swOverlay.addEventListener('change', function() {
-        if (window.AndroidBridge && window.AndroidBridge.onOverlayToggle) {
-          window.AndroidBridge.onOverlayToggle(this.checked);
-        }
-      });
-    }
-
-    const btnSetFolder = document.getElementById('btn-set-folder');
-    const btnImport = document.getElementById('btn-import');
-    if (btnSetFolder) btnSetFolder.addEventListener('click', () => { if (window.AndroidBridge && window.AndroidBridge.onSetFolder) window.AndroidBridge.onSetFolder(); });
-    if (btnImport) btnImport.addEventListener('click', () => { if (window.AndroidBridge && window.AndroidBridge.onImport) window.AndroidBridge.onImport(); });
-
-    // ---------- 浮窗事件 ----------
-    const btnReset = document.getElementById('btn-reset');
-    const btnMinimize = document.getElementById('btn-minimize');
-    const btnPlaylist = document.getElementById('btn-playlist');
-    const btnClose = document.getElementById('btn-close');
-    const btnTrackToggle = document.getElementById('btn-track-toggle');
-
-    if (btnReset) btnReset.addEventListener('click', () => { if (window.AndroidBridge && window.AndroidBridge.onReset) window.AndroidBridge.onReset(); });
-    if (btnMinimize) btnMinimize.addEventListener('click', () => { if (window.AndroidBridge && window.AndroidBridge.onMinimize) window.AndroidBridge.onMinimize(); });
-    if (btnClose) btnClose.addEventListener('click', () => { if (window.AndroidBridge && window.AndroidBridge.onClose) window.AndroidBridge.onClose(); });
-
-    // ========== 播放列表按钮 - 切换弹出列表 ==========
-    if (btnPlaylist) {
-      const newBtn = btnPlaylist.cloneNode(true);
-      btnPlaylist.parentNode.replaceChild(newBtn, btnPlaylist);
-      newBtn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        if (window.AndroidBridge && window.AndroidBridge.onTogglePopup) {
-          window.AndroidBridge.onTogglePopup();
-        }
-      });
-    }
-
-    // ========== 点击悬浮窗其他区域 - 只关闭弹出列表 ==========
-    document.addEventListener('click', function(e) {
-      const popupList = document.getElementById('popup-list');
-      const btnPlaylistEl = document.getElementById('btn-playlist');
-      if (!popupList) return;
-      const popupView = document.getElementById('view-popup');
-      if (!popupView || !popupView.classList.contains('active')) return;
-      
-      const isClickInsidePopup = popupList.contains(e.target) || popupView.contains(e.target);
-      const isClickOnBtn = btnPlaylistEl && btnPlaylistEl.contains(e.target);
-      
-      if (!isClickInsidePopup && !isClickOnBtn) {
-        if (window.AndroidBridge && window.AndroidBridge.onPopupClose) {
-          window.AndroidBridge.onPopupClose();
-        }
-      }
-    });
-
-    // ========== 播放按钮 ==========
-    const btnPlayPause = document.getElementById('btn-play-pause');
-    if (btnPlayPause) {
-      const newBtn = btnPlayPause.cloneNode(true);
-      btnPlayPause.parentNode.replaceChild(newBtn, btnPlayPause);
-      newBtn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        if (window.AndroidBridge && window.AndroidBridge.onPlayPause) {
-          window.AndroidBridge.onPlayPause();
-        }
-      });
-    }
-
-    // ---------- 倍速按钮 ----------
-    const btnSpeedMinus = document.getElementById('btn-speed-minus');
-    const btnSpeedPlus = document.getElementById('btn-speed-plus');
-    const speedValueEl = document.getElementById('tv-speed-value');
-    const speedFill = document.getElementById('speed-fill');
-    const speedThumb = document.getElementById('speed-thumb');
-
-    function fetchSpeed() {
-      if (window.AndroidBridge && window.AndroidBridge.getSpeed) {
-        window.AndroidBridge.getSpeed().then(function(speed) {
-          if (speed !== undefined && speed !== null) { updateSpeedDisplay(speed); }
-        }).catch(function(e) {});
       }
     }
 
-    function updateSpeedDisplay(speed) {
-      speed = Math.round(speed / 0.05) * 0.05;
-      if (speed < 0.05) speed = 0.05;
-      if (speed > 2.0) speed = 2.0;
-      if (speedValueEl) { speedValueEl.textContent = '×' + speed.toFixed(2); }
-      const level = (speed - 0.05) / 0.05;
-      const pct = Math.max(0, Math.min(100, (level / 39) * 100));
-      if (speedFill) speedFill.style.width = pct + '%';
-      if (speedThumb) speedThumb.style.left = pct + '%';
+    function open() {
+      lastCommitted = currentColor; setCurrent(lastCommitted); renderCanvasHue(); renderColorBoard();
+      requestAnimationFrame(() => { placeThumb(lastCommitted); renderSatTrack(); });
+      mask.classList.add('open');
     }
-
-    function changeSpeed(delta) {
-      let current = 1.0;
-      if (speedValueEl) {
-        const match = speedValueEl.textContent.match(/×([\d.]+)/);
-        if (match) current = parseFloat(match[1]);
-      }
-      let newSpeed = current + delta * 0.05;
-      if (newSpeed < 0.05) newSpeed = 0.05;
-      if (newSpeed > 2.0) newSpeed = 2.0;
-      newSpeed = Math.round(newSpeed / 0.05) * 0.05;
-      updateSpeedDisplay(newSpeed);
-      if (window.AndroidBridge && window.AndroidBridge.onSetSpeed) {
-        window.AndroidBridge.onSetSpeed(newSpeed);
-      }
+    function commit() {
+      const c = currentColor; applyAccent(c); document.querySelectorAll('.swatch').forEach(sw => sw.classList.toggle('active', sw.dataset.color === c));
+      if (!recentColors.includes(c)) { recentColors.unshift(c); if (recentColors.length > 8) recentColors.pop(); }
+      window.AndroidBridge?.onThemeChanged(c); mask.classList.remove('open');
     }
+    function cancel() { setCurrent(lastCommitted); requestAnimationFrame(() => placeThumb(lastCommitted)); mask.classList.remove('open'); }
 
-    if (btnSpeedMinus) {
-      const newMinus = btnSpeedMinus.cloneNode(true);
-      btnSpeedMinus.parentNode.replaceChild(newMinus, btnSpeedMinus);
-      newMinus.addEventListener('click', function(e) { e.stopPropagation(); changeSpeed(-1); });
-    }
-    if (btnSpeedPlus) {
-      const newPlus = btnSpeedPlus.cloneNode(true);
-      btnSpeedPlus.parentNode.replaceChild(newPlus, btnSpeedPlus);
-      newPlus.addEventListener('click', function(e) { e.stopPropagation(); changeSpeed(1); });
-    }
-    fetchSpeed();
-    if (window.electronAPI && window.electronAPI.onSpeedChanged) {
-      window.electronAPI.onSpeedChanged(function(speed) { if (speed !== undefined && speed !== null) { updateSpeedDisplay(speed); } });
-    }
-
-    // ---------- 音轨展开和滚动 ----------
-    if (btnTrackToggle) btnTrackToggle.addEventListener('click', () => {
-      const scroll = document.getElementById('track-scroll');
-      const expanded = scroll.classList.toggle('open');
-      btnTrackToggle.textContent = expanded ? '音轨 ▲' : '音轨 ▼';
-    });
-
-    // ---------- 音轨滚轮滚动和拖动 ----------
-    const trackScroll = document.getElementById('track-scroll');
-    if (trackScroll) {
-      trackScroll.addEventListener('wheel', function(e) {
-        if (this.classList.contains('open')) {
-          e.preventDefault();
-          this.scrollLeft += e.deltaY;
-        }
-      }, { passive: false });
-      
-      let isDragging = false;
-      let startX = 0;
-      let scrollLeft = 0;
-      
-      trackScroll.addEventListener('mousedown', function(e) {
-        if (!this.classList.contains('open')) return;
-        isDragging = true;
-        startX = e.pageX - this.offsetLeft;
-        scrollLeft = this.scrollLeft;
-        this.style.cursor = 'grabbing';
-      });
-      
-      document.addEventListener('mousemove', function(e) {
-        if (!isDragging) return;
-        const x = e.pageX - trackScroll.offsetLeft;
-        const walk = (x - startX) * 1.5;
-        trackScroll.scrollLeft = scrollLeft - walk;
-      });
-      
-      document.addEventListener('mouseup', function() {
-        if (isDragging) {
-          isDragging = false;
-          trackScroll.style.cursor = 'grab';
-        }
-      });
-      
-      let touchStartX = 0;
-      let touchScrollLeft = 0;
-      
-      trackScroll.addEventListener('touchstart', function(e) {
-        if (!this.classList.contains('open')) return;
-        const touch = e.touches[0];
-        touchStartX = touch.pageX - this.offsetLeft;
-        touchScrollLeft = this.scrollLeft;
-      }, { passive: true });
-      
-      trackScroll.addEventListener('touchmove', function(e) {
-        if (!this.classList.contains('open')) return;
-        const touch = e.touches[0];
-        const x = touch.pageX - this.offsetLeft;
-        const walk = (x - touchStartX) * 1.5;
-        this.scrollLeft = touchScrollLeft - walk;
-      }, { passive: true });
-    }
-
-    // ---------- 检测窗口 ----------
-    const btnDetectWindow = document.getElementById('btn-detect-window');
-    if (btnDetectWindow) {
-      btnDetectWindow.addEventListener('click', () => {
-        if (window.AndroidBridge && window.AndroidBridge.onDetectWindow) {
-          window.AndroidBridge.onDetectWindow();
-        }
-      });
-    }
-
-    // ---------- 进度条/倍速条拖动 ----------
-    function bindSeekDrag(barId, onRatio, isSpeed = false) {
-      const bar = document.getElementById(barId);
-      if (!bar) return;
-      let dragging = false;
-      let pointerId = null;
-      
-      function getRatioFromEvent(e) {
-        const rect = bar.getBoundingClientRect();
-        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-        let r = (clientX - rect.left) / rect.width;
-        if (r < 0) r = 0;
-        if (r > 1) r = 1;
-        return r;
-      }
-      
-      function updateSlider(ratio) {
-        const fill = bar.querySelector('.seekbar-fill');
-        const thumb = bar.querySelector('.seekbar-thumb');
-        if (fill) fill.style.width = (ratio * 100) + '%';
-        if (thumb) thumb.style.left = (ratio * 100) + '%';
-        if (isSpeed) {
-          const val = document.getElementById('tv-speed-value');
-          const SPEED_MIN = 0.05, SPEED_STEP = 0.05, LEVELS = 40;
-          let level = Math.round(ratio * (LEVELS - 1));
-          if (level < 0) level = 0;
-          if (level > LEVELS - 1) level = LEVELS - 1;
-          const speed = SPEED_MIN + level * SPEED_STEP;
-          if (val) val.textContent = '×' + speed.toFixed(2);
-        }
-      }
-      
-      function onStart(e) {
-        if (e.type === 'mousedown' && e.button !== 0) return;
-        e.preventDefault();
-        dragging = true;
-        if (e.pointerId !== undefined) { pointerId = e.pointerId; bar.setPointerCapture(pointerId); }
-        const ratio = getRatioFromEvent(e);
-        updateSlider(ratio);
-        onRatio(ratio, true);
-      }
-      
-      function onMove(e) {
-        if (!dragging) return;
-        e.preventDefault();
-        const ratio = getRatioFromEvent(e);
-        updateSlider(ratio);
-        onRatio(ratio, true);
-      }
-      
-      function onEnd(e) {
-        if (!dragging) return;
-        dragging = false;
-        if (pointerId !== null) { try { bar.releasePointerCapture(pointerId); } catch (e) {} pointerId = null; }
-        const ratio = getRatioFromEvent(e);
-        updateSlider(ratio);
-        onRatio(ratio, false);
-      }
-      
-      function onCancel() {
-        if (dragging) { dragging = false; if (pointerId !== null) { try { bar.releasePointerCapture(pointerId); } catch (e) {} pointerId = null; } }
-      }
-      
-      bar.addEventListener('mousedown', onStart);
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup', onEnd);
-      bar.addEventListener('touchstart', onStart, { passive: false });
-      bar.addEventListener('touchmove', onMove, { passive: false });
-      bar.addEventListener('touchend', onEnd, { passive: false });
-      bar.addEventListener('touchcancel', onCancel, { passive: false });
-      bar.addEventListener('click', function(e) {
-        if (dragging) return;
-        const ratio = getRatioFromEvent(e);
-        updateSlider(ratio);
-        onRatio(ratio, false);
-      });
-    }
-
-    bindSeekDrag('seek-bar', (ratio, live) => {
-      const cur = document.getElementById('tv-current');
-      if (cur) cur.textContent = fmt(curTotalMs * ratio);
-      if (!live && window.AndroidBridge && window.AndroidBridge.onSeek) { window.AndroidBridge.onSeek(ratio); }
-    }, false);
-
-    bindSeekDrag('seek-speed', (ratio, live) => {
-      if (!live && window.AndroidBridge && window.AndroidBridge.onSetSpeed) {
-        const SPEED_MIN = 0.05, SPEED_STEP = 0.05, LEVELS = 40;
-        let level = Math.round(ratio * (LEVELS - 1));
-        if (level < 0) level = 0;
-        if (level > LEVELS - 1) level = LEVELS - 1;
-        const speed = SPEED_MIN + level * SPEED_STEP;
-        window.AndroidBridge.onSetSpeed(speed);
-      }
-    }, true);
-
-    // ---------- 弹出列表 ----------
-    const btnPopupImport = document.getElementById('btn-popup-import');
-    const btnPopupClose = document.getElementById('btn-popup-close');
-    if (btnPopupImport) btnPopupImport.addEventListener('click', () => { if (window.AndroidBridge && window.AndroidBridge.onPopupImport) window.AndroidBridge.onPopupImport(); });
-    if (btnPopupClose) btnPopupClose.addEventListener('click', () => { if (window.AndroidBridge && window.AndroidBridge.onPopupClose) window.AndroidBridge.onPopupClose(); });
-
-    // ---------- 删除动画 ----------
-    function animateRemove(row, onDone) {
-      if (!row || !row.getBoundingClientRect) { if (onDone) onDone(); return; }
-      const height = row.offsetHeight;
-      row.style.height = height + 'px';
-      row.style.overflow = 'hidden';
-      row.style.transition = 'none';
-      void row.offsetHeight;
-      const DURATION = 200;
-      const start = performance.now();
-      function step(now) {
-        const t = Math.min(1, (now - start) / DURATION);
-        const e = 1 - Math.pow(1 - t, 3);
-        row.style.opacity = (1 - e).toFixed(3);
-        row.style.height = (height * (1 - e)).toFixed(1) + 'px';
-        row.style.paddingTop = (14 * (1 - e)).toFixed(1) + 'px';
-        row.style.paddingBottom = (14 * (1 - e)).toFixed(1) + 'px';
-        row.style.marginTop = (0).toFixed(1) + 'px';
-        if (t < 1) { requestAnimationFrame(step); } else { row.style.display = 'none'; if (onDone) onDone(); }
-      }
-      requestAnimationFrame(step);
-    }
-
-    // ---------- API ----------
-    window.PianoUI = {
-      _playlist: [],
-      setPlaylist(list, currentId) {
-        this._playlist = list || [];
-        const cont = document.getElementById('playlist');
-        if (!cont) return;
-        cont.innerHTML = '';
-        if (!list || list.length === 0) return;
-        list.forEach(item => {
-          const row = document.createElement('div');
-          row.className = 'pl-item';
-          const info = document.createElement('div');
-          info.className = 'pl-info';
-          const nameEl = document.createElement('div');
-          nameEl.className = 'pl-name';
-          nameEl.textContent = item.name || '未命名';
-          if (item.id === currentId) { nameEl.style.color = 'var(--accent-soft)'; }
-          info.appendChild(nameEl);
-          const del = document.createElement('div');
-          del.className = 'pl-del';
-          del.textContent = '✕';
-          del.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (window.AndroidBridge && window.AndroidBridge.onDeleteItem) { window.AndroidBridge.onDeleteItem(item.id); }
-          });
-          row.appendChild(info);
-          row.appendChild(del);
-          row.addEventListener('click', () => {
-            if (window.AndroidBridge && window.AndroidBridge.onSelectItem) { window.AndroidBridge.onSelectItem(item.id); }
-          });
-          cont.appendChild(row);
-        });
-      },
-      setOverlayChecked(v) { const sw = document.getElementById('sw-overlay'); if (sw) sw.checked = v; },
-      setTitle(title, subtitle) {
-        const t = document.getElementById('tv-title');
-        const s = document.getElementById('tv-subtitle');
-        if (t) t.textContent = title || '未选择乐曲';
-        if (s) s.textContent = subtitle || '';
-      },
-      setStatusText(text) { const s = document.getElementById('tv-subtitle'); if (s) s.textContent = text || ''; },
-      setDetectHint(text) {
-        const h = document.getElementById('detect-hint');
-        if (h) {
-          h.textContent = text || '播放前请先检测窗口';
-        }
-      },
-      setDetectLocked(locked) {
-        const b = document.getElementById('btn-detect-window');
-        if (b) {
-          if (locked) b.classList.add('locked');
-          else b.classList.remove('locked');
-        }
-      },
-      setPlaying(playing) {
-        const play = document.getElementById('icon-play');
-        const pause = document.getElementById('icon-pause');
-        if (play) play.style.display = playing ? 'none' : '';
-        if (pause) pause.style.display = playing ? '' : 'none';
-      },
-      setProgress(currentMs, totalMs) {
-        const cf = document.getElementById('tv-current');
-        const tf = document.getElementById('tv-total');
-        const fill = document.getElementById('seek-fill');
-        const thumb = document.getElementById('seek-thumb');
-        curTotalMs = totalMs || 120000;
-        if (cf) cf.textContent = fmt(currentMs || 0);
-        if (tf) tf.textContent = fmt(totalMs || 120000);
-        const pct = totalMs > 0 ? ((currentMs || 0) / totalMs * 100) : 0;
-        if (fill) fill.style.width = pct + '%';
-        if (thumb) thumb.style.left = pct + '%';
-      },
-      setSpeed(speed) { if (speed !== undefined && speed !== null) { updateSpeedDisplay(speed); } },
-      setTracks(tracks) {
-        const cont = document.getElementById('track-list');
-        if (!cont) return;
-        
-        const scroll = document.getElementById('track-scroll');
-        const scrollLeft = scroll ? scroll.scrollLeft : 0;
-        const list = tracks || [];
-        
-        const existingItems = cont.querySelectorAll('.track-item');
-        
-        if (existingItems.length === list.length && existingItems.length > 0) {
-          existingItems.forEach((item, index) => {
-            const t = list[index];
-            if (!t) return;
-            const isChecked = t.enabled !== false;
-            item.classList.toggle('checked', isChecked);
-            const nameEl = item.querySelector('.track-name');
-            const countEl = item.querySelector('.track-count');
-            if (nameEl) nameEl.textContent = t.name || '音轨 ' + (t.index + 1);
-            if (countEl) countEl.textContent = (t.noteCount || 0) + ' 个音符';
-            item.dataset.index = t.index;
-          });
-          if (scroll) scroll.scrollLeft = scrollLeft;
-          return;
-        }
-        
-        if (existingItems.length > list.length) {
-          for (let i = list.length; i < existingItems.length; i++) {
-            existingItems[i].remove();
-          }
-        }
-        
-        const currentItems = cont.querySelectorAll('.track-item');
-        list.forEach((t, index) => {
-          const isChecked = t.enabled !== false;
-          let item = currentItems[index];
-          
-          if (!item) {
-            item = document.createElement('div');
-            item.className = 'track-item';
-            item.innerHTML = `
-              <span class="track-checkbox"></span>
-              <span class="track-text">
-                <span class="track-name"></span>
-                <span class="track-count"></span>
-              </span>
-            `;
-            item.addEventListener('click', function(e) {
-              e.stopPropagation();
-              const isNowChecked = !this.classList.contains('checked');
-              this.classList.toggle('checked', isNowChecked);
-              if (window.AndroidBridge && window.AndroidBridge.toggleTrackMute) {
-                window.AndroidBridge.toggleTrackMute(parseInt(this.dataset.index));
-              }
-            });
-            cont.appendChild(item);
-          }
-          
-          item.classList.toggle('checked', isChecked);
-          item.dataset.index = t.index;
-          const nameEl = item.querySelector('.track-name');
-          const countEl = item.querySelector('.track-count');
-          if (nameEl) nameEl.textContent = t.name || '音轨 ' + (t.index + 1);
-          if (countEl) countEl.textContent = (t.noteCount || 0) + ' 个音符';
-        });
-        
-        if (scroll) scroll.scrollLeft = 0;
-      },
-      setPopupList(list, currentId) {
-        const cont = document.getElementById('popup-list');
-        if (!cont) return;
-        cont.innerHTML = '';
-        if (!list || list.length === 0) return;
-        list.forEach(item => {
-          const row = document.createElement('div');
-          row.className = 'pl-item';
-          const info = document.createElement('div');
-          info.className = 'pl-info';
-          const nameEl = document.createElement('div');
-          nameEl.className = 'pl-name';
-          nameEl.textContent = item.name || '未命名';
-          if (item.id === currentId) { nameEl.style.color = 'var(--accent-soft)'; }
-          info.appendChild(nameEl);
-          const del = document.createElement('div');
-          del.className = 'pl-del';
-          del.textContent = '✕';
-          del.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (window.AndroidBridge && window.AndroidBridge.onDeletePopupItem) { window.AndroidBridge.onDeletePopupItem(item.id); }
-          });
-          row.appendChild(info);
-          row.appendChild(del);
-          row.addEventListener('click', () => {
-            if (window.AndroidBridge && window.AndroidBridge.onSelectItem) { window.AndroidBridge.onSelectItem(item.id); }
-          });
-          cont.appendChild(row);
-        });
-      }
-    };
-
-    function fmt(ms) {
-      const s = Math.floor((ms || 0) / 1000);
-      const m = Math.floor(s / 60);
-      const sec = s % 60;
-      return (m < 10 ? '0' + m : m) + ':' + (sec < 10 ? '0' + sec : sec);
-    }
-
-    // ---------- MIDI 事件监听 ----------
-    if (window.electronAPI) {
-      window.electronAPI.onThemeChanged((color) => {
-        if (color && typeof color === 'string' && color.startsWith('#') && typeof applyAccent === 'function') {
-          applyAccent(color);
-        }
-      });
-      
-      window.electronAPI.onSetFloatMode((mode) => {
-        if (mode && window.AndroidBridge && window.AndroidBridge.getThemeColor) {
-          window.AndroidBridge.getThemeColor().then(color => {
-            if (color && typeof applyAccent === 'function') { applyAccent(color); }
-          }).catch(() => {});
-        }
-      });
-      
-      window.electronAPI.onSetTitle((title, subtitle) => {
-        if (window.PianoUI && window.PianoUI.setTitle) {
-          window.PianoUI.setTitle(title, subtitle || '');
-        }
-      });
-      
-      window.electronAPI.onSetStatus((text) => {
-        if (window.PianoUI && window.PianoUI.setStatusText) { window.PianoUI.setStatusText(text); }
-      });
-      
-      window.electronAPI.onUpdateTracks((tracks) => {
-        if (window.PianoUI && window.PianoUI.setTracks) { window.PianoUI.setTracks(tracks); }
-      });
-      
-      window.electronAPI.onProgressUpdate((data) => {
-        if (window.PianoUI && window.PianoUI.setProgress) {
-          window.PianoUI.setProgress(data.currentMs, data.totalMs);
-        }
-      });
-      
-      window.electronAPI.onPlayStateChanged((playing) => {
-        if (window.PianoUI && window.PianoUI.setPlaying) {
-          window.PianoUI.setPlaying(playing);
-        }
-      });
-
-      // ---------- 悬浮窗开关状态同步（当悬浮窗被关闭时，主页开关回到未选中） ----------
-      window.electronAPI.onOverlayStateChanged((checked) => {
-        const sw = document.getElementById('sw-overlay');
-        if (sw) {
-          sw.checked = !!checked;
-        }
-      });
-
-      // ---------- 检测窗口倒计时（UI 侧自己跑，绝对丝滑） ----------
-      window.electronAPI.onDetectCountdownStart((seconds) => {
-        let n = seconds;
-        const h = document.getElementById('detect-hint');
-        if (h) h.textContent = '检测中... ' + n + 's';
-        if (window._detectTimer) {
-          clearInterval(window._detectTimer);
-          window._detectTimer = null;
-        }
-        window._detectTimer = setInterval(() => {
-          n--;
-          if (n > 0) {
-            if (h) h.textContent = '检测中... ' + n + 's';
-          } else {
-            clearInterval(window._detectTimer);
-            window._detectTimer = null;
-            if (h) h.textContent = '检测中...';
-          }
-        }, 1000);
-      });
-
-      window.electronAPI.onDetectResult((data) => {
-        if (window.PianoUI && window.PianoUI.setDetectHint) {
-          if (data.hint) {
-            window.PianoUI.setDetectHint(data.hint);
-          }
-        }
-        if (window.PianoUI && window.PianoUI.setDetectLocked) {
-          window.PianoUI.setDetectLocked(data.locked || false);
-        }
-      });
-    }
-
+    btnPalette?.addEventListener('click', open); btnClose?.addEventListener('click', cancel);
+    btnCancel?.addEventListener('click', cancel); btnOk?.addEventListener('click', commit);
+    mask.addEventListener('click', e => { if (e.target === mask) cancel(); });
   })();
+
+  // 捐赠交互
+  const donateCard = document.getElementById('donate-card');
+  const donateToggle = document.getElementById('donate-toggle');
+  if (donateCard && donateToggle) {
+    donateToggle.addEventListener('click', () => {
+      const exp = donateCard.classList.toggle('expanded');
+      donateToggle.querySelector('.arrow').textContent = exp ? '▲' : '▼';
+    });
+  }
+
+  document.querySelectorAll('.donate-img').forEach(img => {
+    let timer = null, isLongPress = false;
+    function saveImage() {
+      if (isLongPress) return; isLongPress = true;
+      const src = img.getAttribute('src');
+      const p = window.AndroidBridge?.onSaveImage(src) || window.electronAPI?.sendSaveImage?.(src);
+      if (p && typeof p.then === 'function') {
+        p.then(r => r?.success ? showToast('已保存到下载目录：' + (r.name || '')) : showToast('保存失败: ' + (r?.error || '未知错误'))).catch(e => showToast('保存失败: ' + e.message));
+      }
+      setTimeout(() => isLongPress = false, 800);
+    }
+    img.addEventListener('mousedown', e => { if (e.button !== 0) return; isLongPress = false; timer = setTimeout(() => { timer = null; saveImage(); }, 500); });
+    img.addEventListener('mouseup', () => { if (timer) clearTimeout(timer); });
+    img.addEventListener('mouseleave', () => { if (timer) clearTimeout(timer); });
+    img.addEventListener('touchstart', () => { isLongPress = false; timer = setTimeout(() => { timer = null; saveImage(); }, 500); }, { passive: true });
+    img.addEventListener('touchend', () => { if (timer) clearTimeout(timer); }, { passive: true });
+    img.addEventListener('touchmove', () => { if (timer) clearTimeout(timer); }, { passive: true });
+  });
+
+  // 控制按钮
+  document.getElementById('sw-overlay')?.addEventListener('change', function () { window.AndroidBridge?.onOverlayToggle(this.checked); });
+  document.getElementById('btn-set-folder')?.addEventListener('click', () => window.AndroidBridge?.onSetFolder());
+  document.getElementById('btn-import')?.addEventListener('click', () => window.AndroidBridge?.onImport());
+  document.getElementById('btn-reset')?.addEventListener('click', () => window.AndroidBridge?.onReset());
+  document.getElementById('btn-minimize')?.addEventListener('click', () => window.AndroidBridge?.onMinimize());
+  document.getElementById('btn-close')?.addEventListener('click', () => window.AndroidBridge?.onClose());
+
+  const btnPlaylist = document.getElementById('btn-playlist');
+  if (btnPlaylist) {
+    const nb = btnPlaylist.cloneNode(true); btnPlaylist.parentNode.replaceChild(nb, btnPlaylist);
+    nb.addEventListener('click', e => { e.stopPropagation(); window.AndroidBridge?.onTogglePopup(); });
+  }
+
+  document.addEventListener('click', e => {
+    const pl = document.getElementById('popup-list'), pb = document.getElementById('btn-playlist'), pv = document.getElementById('view-popup');
+    if (!pl || !pv || !pv.classList.contains('active')) return;
+    if (!pl.contains(e.target) && !pv.contains(e.target) && !pb?.contains(e.target)) window.AndroidBridge?.onPopupClose();
+  });
+
+  const btnPlayPause = document.getElementById('btn-play-pause');
+  if (btnPlayPause) {
+    const nb = btnPlayPause.cloneNode(true); btnPlayPause.parentNode.replaceChild(nb, btnPlayPause);
+    nb.addEventListener('click', e => { e.stopPropagation(); window.AndroidBridge?.onPlayPause(); });
+  }
+
+  // 倍速控制
+  const btnSpeedMinus = document.getElementById('btn-speed-minus');
+  const btnSpeedPlus = document.getElementById('btn-speed-plus');
+  const speedValueEl = document.getElementById('tv-speed-value');
+  const speedFill = document.getElementById('speed-fill');
+  const speedThumb = document.getElementById('speed-thumb');
+
+  function updateSpeedDisplay(speed) {
+    speed = Math.round(speed / 0.05) * 0.05;
+    if (speed < 0.05) speed = 0.05; if (speed > 2.0) speed = 2.0;
+    if (speedValueEl) speedValueEl.textContent = '×' + speed.toFixed(2);
+    const pct = Math.max(0, Math.min(100, (((speed - 0.05) / 0.05) / 39) * 100));
+    if (speedFill) speedFill.style.width = pct + '%'; if (speedThumb) speedThumb.style.left = pct + '%';
+  }
+
+  function changeSpeed(d) {
+    let cur = 1.0;
+    if (speedValueEl) { const m = speedValueEl.textContent.match(/×([\d.]+)/); if (m) cur = parseFloat(m[1]); }
+    let ns = cur + d * 0.05; if (ns < 0.05) ns = 0.05; if (ns > 2.0) ns = 2.0;
+    ns = Math.round(ns / 0.05) * 0.05; updateSpeedDisplay(ns); window.AndroidBridge?.onSetSpeed(ns);
+  }
+
+  if (btnSpeedMinus) {
+    const nm = btnSpeedMinus.cloneNode(true); btnSpeedMinus.parentNode.replaceChild(nm, btnSpeedMinus);
+    nm.addEventListener('click', e => { e.stopPropagation(); changeSpeed(-1); });
+  }
+  if (btnSpeedPlus) {
+    const np = btnSpeedPlus.cloneNode(true); btnSpeedPlus.parentNode.replaceChild(np, btnSpeedPlus);
+    np.addEventListener('click', e => { e.stopPropagation(); changeSpeed(1); });
+  }
+
+  if (window.AndroidBridge?.getSpeed) {
+    window.AndroidBridge.getSpeed().then(s => { if (s != null) updateSpeedDisplay(s); }).catch(()=>{});
+  }
+  if (window.electronAPI?.onSpeedChanged) window.electronAPI.onSpeedChanged(s => { if (s != null) updateSpeedDisplay(s); });
+
+  // 音轨区域
+  const btnTrackToggle = document.getElementById('btn-track-toggle');
+  const trackScroll = document.getElementById('track-scroll');
+  if (btnTrackToggle && trackScroll) {
+    btnTrackToggle.addEventListener('click', () => {
+      const exp = trackScroll.classList.toggle('open');
+      btnTrackToggle.textContent = exp ? '音轨 ▲' : '音轨 ▼';
+    });
+    
+    trackScroll.addEventListener('wheel', function (e) {
+      if (this.classList.contains('open')) { e.preventDefault(); this.scrollLeft += e.deltaY; }
+    }, { passive: false });
+
+    let isDrag = false, startX = 0, scrLeft = 0;
+    trackScroll.addEventListener('mousedown', function (e) {
+      if (!this.classList.contains('open')) return; isDrag = true; startX = e.pageX - this.offsetLeft; scrLeft = this.scrollLeft; this.style.cursor = 'grabbing';
+    });
+    document.addEventListener('mousemove', e => { if (isDrag) trackScroll.scrollLeft = scrLeft - (e.pageX - trackScroll.offsetLeft - startX) * 1.5; });
+    document.addEventListener('mouseup', () => { if (isDrag) { isDrag = false; trackScroll.style.cursor = 'grab'; } });
+
+    let tStartX = 0, tScrLeft = 0;
+    trackScroll.addEventListener('touchstart', function (e) {
+      if (!this.classList.contains('open')) return; tStartX = e.touches[0].pageX - this.offsetLeft; tScrLeft = this.scrollLeft;
+    }, { passive: true });
+    trackScroll.addEventListener('touchmove', function (e) {
+      if (!this.classList.contains('open')) return;
+      const x = e.touches[0].pageX - this.offsetLeft; this.scrollLeft = tScrLeft - (x - tStartX) * 1.5;
+    }, { passive: true });
+  }
+
+  document.getElementById('btn-detect-window')?.addEventListener('click', () => window.AndroidBridge?.onDetectWindow());
+
+  // 进度条拖动
+  function bindSeekDrag(barId, onRatio, isSpeed = false) {
+    const bar = document.getElementById(barId);
+    if (!bar) return;
+    let dragging = false;
+
+    function getRatio(e) {
+      const rect = bar.getBoundingClientRect();
+      const cx = e.touches ? e.touches[0].clientX : e.clientX;
+      return Math.max(0, Math.min(1, (cx - rect.left) / rect.width));
+    }
+    
+    function updateSlider(r) {
+      bar.querySelector('.seekbar-fill').style.width = (r * 100) + '%';
+      bar.querySelector('.seekbar-thumb').style.left = (r * 100) + '%';
+      if (isSpeed) {
+        const val = document.getElementById('tv-speed-value');
+        let lvl = Math.round(r * 39); lvl = Math.max(0, Math.min(39, lvl));
+        if (val) val.textContent = '×' + (0.05 + lvl * 0.05).toFixed(2);
+      }
+    }
+
+    function start(e) {
+      if (e.type === 'mousedown' && e.button !== 0) return; e.preventDefault();
+      dragging = true; const r = getRatio(e); updateSlider(r); onRatio(r, true);
+    }
+    function move(e) { if (!dragging) return; e.preventDefault(); const r = getRatio(e); updateSlider(r); onRatio(r, true); }
+    function end(e) {
+      if (!dragging) return; dragging = false; const r = getRatio(e); updateSlider(r); onRatio(r, false);
+    }
+
+    bar.addEventListener('mousedown', start);
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', end);
+    bar.addEventListener('touchstart', start, { passive: false });
+    bar.addEventListener('touchmove', move, { passive: false });
+    bar.addEventListener('touchend', end, { passive: false });
+    bar.addEventListener('click', e => { if (!dragging) { const r = getRatio(e); updateSlider(r); onRatio(r, false); } });
+  }
+
+  bindSeekDrag('seek-bar', (r, live) => {
+    const cur = document.getElementById('tv-current');
+    if (cur) cur.textContent = fmt(curTotalMs * r);
+    if (!live) window.AndroidBridge?.onSeek(r);
+  }, false);
+
+  bindSeekDrag('seek-speed', (r, live) => {
+    if (!live) {
+      let lvl = Math.round(r * 39); lvl = Math.max(0, Math.min(39, lvl));
+      window.AndroidBridge?.onSetSpeed(0.05 + lvl * 0.05);
+    }
+  }, true);
+
+  // 弹出列表
+  const btnPopupImport = document.getElementById('btn-popup-import');
+  const btnPopupClose = document.getElementById('btn-popup-close');
+  if (btnPopupImport) btnPopupImport.addEventListener('click', () => window.AndroidBridge?.onPopupImport());
+  if (btnPopupClose) btnPopupClose.addEventListener('click', () => window.AndroidBridge?.onPopupClose());
+
+  // UI 接口
+  window.PianoUI = {
+    setPlaylist(list, currentId) {
+      const cont = document.getElementById('playlist'); if (!cont) return;
+      cont.innerHTML = ''; if (!list) return;
+      list.forEach(item => {
+        const row = document.createElement('div'); row.className = 'pl-item';
+        row.innerHTML = `<div class="pl-info"><div class="pl-name" ${item.id === currentId ? 'style="color:var(--accent-soft)"' : ''}>${item.name || '未命名'}</div></div><div class="pl-del">✕</div>`;
+        row.querySelector('.pl-del').addEventListener('click', e => { e.stopPropagation(); window.AndroidBridge?.onDeleteItem(item.id); });
+        row.addEventListener('click', () => window.AndroidBridge?.onSelectItem(item.id));
+        cont.appendChild(row);
+      });
+    },
+    setOverlayChecked(v) { const sw = document.getElementById('sw-overlay'); if (sw) sw.checked = v; },
+    setTitle(title, subtitle) {
+      const t = document.getElementById('tv-title'), s = document.getElementById('tv-subtitle');
+      if (t) t.textContent = title || '未选择乐曲'; if (s) s.textContent = subtitle || '';
+    },
+    setStatusText(text) { const s = document.getElementById('tv-subtitle'); if (s) s.textContent = text || ''; },
+    setDetectHint(text) { const h = document.getElementById('detect-hint'); if (h) h.textContent = text || '播放前请先检测窗口'; },
+    setDetectLocked(locked) { const b = document.getElementById('btn-detect-window'); if (b) b.classList.toggle('locked', !!locked); },
+    setPlaying(playing) {
+      const p = document.getElementById('icon-play'), s = document.getElementById('icon-pause');
+      if (p) p.style.display = playing ? 'none' : ''; if (s) s.style.display = playing ? '' : 'none';
+    },
+    setProgress(currentMs, totalMs) {
+      const cf = document.getElementById('tv-current'), tf = document.getElementById('tv-total');
+      const f = document.getElementById('seek-fill'), th = document.getElementById('seek-thumb');
+      curTotalMs = totalMs || 120000;
+      if (cf) cf.textContent = fmt(currentMs || 0); if (tf) tf.textContent = fmt(totalMs || 120000);
+      const pct = totalMs > 0 ? ((currentMs || 0) / totalMs * 100) : 0;
+      if (f) f.style.width = pct + '%'; if (th) th.style.left = pct + '%';
+    },
+    setSpeed(speed) { if (speed != null) updateSpeedDisplay(speed); },
+    setTracks(tracks) {
+      const cont = document.getElementById('track-list'); if (!cont) return;
+      const list = tracks || [];
+      const ext = cont.querySelectorAll('.track-item');
+      if (ext.length === list.length && list.length > 0) {
+        ext.forEach((it, i) => {
+          it.classList.toggle('checked', list[i].enabled !== false);
+          it.dataset.index = list[i].index;
+          it.querySelector('.track-name').textContent = list[i].name || '音轨 ' + (list[i].index + 1);
+          it.querySelector('.track-count').textContent = (list[i].noteCount || 0) + ' 个音符';
+        });
+        return;
+      }
+      if (ext.length > list.length) for (let i = list.length; i < ext.length; i++) ext[i].remove();
+      const cur = cont.querySelectorAll('.track-item');
+      list.forEach((t, i) => {
+        let it = cur[i];
+        if (!it) {
+          it = document.createElement('div'); it.className = 'track-item';
+          it.innerHTML = '<span class="track-checkbox"></span><span class="track-text"><span class="track-name"></span><span class="track-count"></span></span>';
+          it.addEventListener('click', function (e) {
+            e.stopPropagation(); this.classList.toggle('checked'); window.AndroidBridge?.toggleTrackMute(parseInt(this.dataset.index));
+          });
+          cont.appendChild(it);
+        }
+        it.classList.toggle('checked', t.enabled !== false); it.dataset.index = t.index;
+        it.querySelector('.track-name').textContent = t.name || '音轨 ' + (t.index + 1);
+        it.querySelector('.track-count').textContent = (t.noteCount || 0) + ' 个音符';
+      });
+    },
+    setPopupList(list, currentId) {
+      const cont = document.getElementById('popup-list'); if (!cont) return;
+      cont.innerHTML = ''; if (!list) return;
+      list.forEach(item => {
+        const row = document.createElement('div'); row.className = 'pl-item';
+        row.innerHTML = `<div class="pl-info"><div class="pl-name" ${item.id === currentId ? 'style="color:var(--accent-soft)"' : ''}>${item.name || '未命名'}</div></div><div class="pl-del">✕</div>`;
+        row.querySelector('.pl-del').addEventListener('click', e => { e.stopPropagation(); window.AndroidBridge?.onDeletePopupItem(item.id); });
+        row.addEventListener('click', () => window.AndroidBridge?.onSelectItem(item.id));
+        cont.appendChild(row);
+      });
+    }
+  };
+
+  function fmt(ms) {
+    const s = Math.floor((ms || 0) / 1000);
+    return (Math.floor(s / 60) < 10 ? '0' + Math.floor(s / 60) : Math.floor(s / 60)) + ':' + (s % 60 < 10 ? '0' + (s % 60) : (s % 60));
+  }
+
+  // 事件监听
+  if (window.electronAPI) {
+    window.electronAPI.onSetFloatMode(m => {
+      if (m && window.AndroidBridge?.getThemeColor) window.AndroidBridge.getThemeColor().then(c => applyAccent(c)).catch(()=>{});
+    });
+    window.electronAPI.onSetTitle((t, s) => window.PianoUI?.setTitle(t, s || ''));
+    window.electronAPI.onSetStatus(t => window.PianoUI?.setStatusText(t));
+    window.electronAPI.onUpdateTracks(t => window.PianoUI?.setTracks(t));
+    window.electronAPI.onProgressUpdate(d => window.PianoUI?.setProgress(d.currentMs, d.totalMs));
+    window.electronAPI.onPlayStateChanged(p => window.PianoUI?.setPlaying(p));
+    window.electronAPI.onOverlayStateChanged(c => { const sw = document.getElementById('sw-overlay'); if (sw) sw.checked = !!c; });
+    
+    window.electronAPI.onDetectCountdownStart(sec => {
+      let n = sec; const h = document.getElementById('detect-hint');
+      if (h) h.textContent = '检测中... ' + n + 's';
+      if (window._detTimer) clearInterval(window._detTimer);
+      window._detTimer = setInterval(() => {
+        n--; if (n > 0) { if (h) h.textContent = '检测中... ' + n + 's'; }
+        else { clearInterval(window._detTimer); if (h) h.textContent = '检测中...'; }
+      }, 1000);
+    });
+    
+    window.electronAPI.onDetectResult(data => {
+      if (data.hint) window.PianoUI?.setDetectHint(data.hint);
+      window.PianoUI?.setDetectLocked(data.locked || false);
+    });
+  }
+})();
 </script>
-</body></html>
+</body>
+</html>
